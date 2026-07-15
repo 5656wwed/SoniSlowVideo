@@ -8,6 +8,9 @@ import whisperx
 import torch
 import os
 from soni_translate.audio_segments import create_translated_audio
+
+# SoniSlowVideo: slow the VIDEO to fit natural voice (not rush TTS)
+STRETCH_VIDEO_TO_VOICE = True
 from soni_translate.text_to_speech import (
     audio_segmentation_to_voice,
     edge_tts_voices_list,
@@ -1027,11 +1030,15 @@ class SoniTranslate(SoniTrCache):
         ], {
             "valid_speakers": self.valid_speakers
         }):
+            # Keep voice natural; video will stretch to match
+            if STRETCH_VIDEO_TO_VOICE:
+                avoid_overlap = True
             audio_files, speakers_list = accelerate_segments(
                     self.result_diarize,
                     max_accelerate_audio,
                     self.valid_speakers,
                     acceleration_rate_regulation,
+                    stretch_video=STRETCH_VIDEO_TO_VOICE,
                 )
 
             # Voice Imitation (Tone color converter)
@@ -1171,12 +1178,58 @@ class SoniTranslate(SoniTrCache):
         if not self.task_in_cache("output", [
             hash_base_video_file,
             hash_base_audio_wav,
-            burn_subtitles_to_video
+            burn_subtitles_to_video,
+            STRETCH_VIDEO_TO_VOICE,
         ], {}):
             # Merge new audio + video
             remove_files(video_output_file)
+            if STRETCH_VIDEO_TO_VOICE and not is_audio_file(media_file):
+                # Slow the whole video so natural voice fits (no rushed TTS)
+                try:
+                    def _dur(path):
+                        import subprocess
+                        out = subprocess.check_output(
+                            [
+                                "ffprobe", "-v", "error",
+                                "-show_entries", "format=duration",
+                                "-of", "default=noprint_wrappers=1:nokey=1",
+                                path,
+                            ],
+                            text=True,
+                        ).strip()
+                        return float(out)
+
+                    v_dur = _dur(base_video_file)
+                    a_dur = _dur(mix_audio_file)
+                    ratio = (a_dur / v_dur) if v_dur > 0.1 else 1.0
+                    # Only slow down (never speed video up); cap so it doesn't crawl
+                    ratio = max(1.0, min(ratio, 1.8))
+                    if ratio > 1.02:
+                        stretched = "video_stretched.mp4"
+                        remove_files(stretched)
+                        logger.info(
+                            f"Slowing video ×{ratio:.3f} "
+                            f"(voice {a_dur:.1f}s / video {v_dur:.1f}s)"
+                        )
+                        run_command(
+                            f'ffmpeg -y -i "{base_video_file}" '
+                            f'-filter:v "setpts={ratio:.6f}*PTS" -an '
+                            f'-c:v libx264 -preset veryfast -crf 20 '
+                            f'"{stretched}"'
+                        )
+                        base_video_file = stretched
+                    else:
+                        logger.info(
+                            f"Voice already fits video "
+                            f"({a_dur:.1f}s vs {v_dur:.1f}s) — no stretch"
+                        )
+                except Exception as err:
+                    logger.error(f"Video stretch failed: {err}")
+
             run_command(
-                f"ffmpeg -i {base_video_file} -i {mix_audio_file} -c:v copy -c:a copy -map 0:v -map 1:a -shortest {video_output_file}"
+                f'ffmpeg -y -i "{base_video_file}" -i "{mix_audio_file}" '
+                f'-c:v copy -c:a aac -map 0:v -map 1:a -shortest '
+                f'"{video_output_file}"'
             )
 
         output = media_out(
@@ -1244,7 +1297,8 @@ class SoniTranslate(SoniTrCache):
                 result_diarize,
                 1.0,
                 valid_speakers,
-            )
+            stretch_video=STRETCH_VIDEO_TO_VOICE,
+        )
 
         # custom voice
         if custom_voices:
@@ -1434,7 +1488,8 @@ class SoniTranslate(SoniTrCache):
                 result_diarize,
                 1.0,
                 valid_speakers,
-            )
+            stretch_video=STRETCH_VIDEO_TO_VOICE,
+        )
 
         # custom voice
         if custom_voices:
