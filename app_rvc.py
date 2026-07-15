@@ -1030,9 +1030,7 @@ class SoniTranslate(SoniTrCache):
         ], {
             "valid_speakers": self.valid_speakers
         }):
-            # Keep voice natural; video will stretch to match
-            if STRETCH_VIDEO_TO_VOICE:
-                avoid_overlap = True
+            # Smart: mild audio first; video stretch only if still needed at end
             audio_files, speakers_list = accelerate_segments(
                     self.result_diarize,
                     max_accelerate_audio,
@@ -1184,7 +1182,7 @@ class SoniTranslate(SoniTrCache):
             # Merge new audio + video
             remove_files(video_output_file)
             if STRETCH_VIDEO_TO_VOICE and not is_audio_file(media_file):
-                # Slow the whole video so natural voice fits (no rushed TTS)
+                # Intelligent: only slow video when voice is clearly longer
                 try:
                     def _dur(path):
                         import subprocess
@@ -1202,29 +1200,60 @@ class SoniTranslate(SoniTrCache):
                     v_dur = _dur(base_video_file)
                     a_dur = _dur(mix_audio_file)
                     ratio = (a_dur / v_dur) if v_dur > 0.1 else 1.0
-                    # Only slow down (never speed video up); cap so it doesn't crawl
-                    ratio = max(1.0, min(ratio, 1.8))
-                    if ratio > 1.02:
-                        stretched = "video_stretched.mp4"
-                        remove_files(stretched)
+
+                    # Thresholds (smart):
+                    #  <= 1.08 : fits → NO video slow
+                    #  1.08–1.35 : slow video a bit
+                    #  > 1.35 : slow video max 1.35 + mild full-track audio speed
+                    if ratio <= 1.08:
                         logger.info(
-                            f"Slowing video ×{ratio:.3f} "
-                            f"(voice {a_dur:.1f}s / video {v_dur:.1f}s)"
+                            f"No video stretch needed "
+                            f"(voice {a_dur:.1f}s / video {v_dur:.1f}s, "
+                            f"ratio {ratio:.3f})"
                         )
-                        run_command(
-                            f'ffmpeg -y -i "{base_video_file}" '
-                            f'-filter:v "setpts={ratio:.6f}*PTS" -an '
-                            f'-c:v libx264 -preset veryfast -crf 20 '
-                            f'"{stretched}"'
-                        )
-                        base_video_file = stretched
                     else:
-                        logger.info(
-                            f"Voice already fits video "
-                            f"({a_dur:.1f}s vs {v_dur:.1f}s) — no stretch"
-                        )
+                        video_ratio = min(ratio, 1.35)
+                        remaining = ratio / video_ratio  # 1.0 if ratio<=1.35
+
+                        if video_ratio > 1.08:
+                            stretched = "video_stretched.mp4"
+                            remove_files(stretched)
+                            logger.info(
+                                f"Slowing video ×{video_ratio:.3f} "
+                                f"(voice {a_dur:.1f}s / video {v_dur:.1f}s)"
+                            )
+                            run_command(
+                                f'ffmpeg -y -i "{base_video_file}" '
+                                f'-filter:v "setpts={video_ratio:.6f}*PTS" -an '
+                                f'-c:v libx264 -preset veryfast -crf 20 '
+                                f'"{stretched}"'
+                            )
+                            base_video_file = stretched
+
+                        if remaining > 1.05:
+                            # Still too long after max video stretch → mild audio
+                            sped = "audio_mix_smart.mp3"
+                            remove_files(sped)
+                            # chain atempo for remaining
+                            r = min(remaining, 1.25)
+                            filters = []
+                            rr = r
+                            while rr > 2.0:
+                                filters.append("atempo=2.0")
+                                rr /= 2.0
+                            filters.append(f"atempo={rr:.3f}")
+                            af = ",".join(filters)
+                            logger.info(
+                                f"Also mild voice speed ×{r:.3f} "
+                                f"(after video stretch cap)"
+                            )
+                            run_command(
+                                f'ffmpeg -y -i "{mix_audio_file}" '
+                                f'-filter:a {af} "{sped}"'
+                            )
+                            mix_audio_file = sped
                 except Exception as err:
-                    logger.error(f"Video stretch failed: {err}")
+                    logger.error(f"Smart stretch failed: {err}")
 
             run_command(
                 f'ffmpeg -y -i "{base_video_file}" -i "{mix_audio_file}" '

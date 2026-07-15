@@ -1331,18 +1331,29 @@ def accelerate_segments(
             except Exception as error:
                 logger.error(str(error))
 
-        # Short speech: leave as-is so silence becomes the gap between sentences.
+        # Smart timing:
+        # - Fits already → leave natural
+        # - Slightly long → light audio speed only (no video stretch needed for this)
+        # - Very long → mild audio only; video stretch handles the rest later
         if stretch_video:
-            # Voice stays natural — video will be slowed later to match.
-            acc_percentage = 1.0
+            if acc_percentage <= 1.08:
+                acc_percentage = 1.0
+            elif acc_percentage <= 1.18:
+                # small fix with voice only
+                acc_percentage = acc_percentage
+            else:
+                # keep voice almost natural; video may slow later
+                acc_percentage = 1.12
+                logger.info(
+                    f"Smart mode {filename}: mild x1.12 "
+                    f"(needed x{duration_tts/duration_true:.2f}) — video may stretch"
+                )
         elif acc_percentage <= 1.03:
             acc_percentage = 1.0
         else:
             needed = acc_percentage
-            if needed <= float(max_accelerate_audio):
-                acc_percentage = needed
-            else:
-                acc_percentage = needed
+            acc_percentage = needed
+            if needed > float(max_accelerate_audio):
                 logger.info(
                     f"Heavy fit {filename}: need x{needed:.2f} for slot {duration_true:.2f}s"
                 )
@@ -1362,28 +1373,32 @@ def accelerate_segments(
                 f"ffmpeg -y -loglevel panic -i {filename} -filter:a {atempo} {out_file}"
             )
 
-        # Safety force-fit — skipped in stretch-video mode
+        # Safety force-fit
+        # stretch mode: only mild cleanup (max x1.15); big leftover → video stretch
         try:
             duration_create = librosa.get_duration(filename=out_file)
-            if (
-                (not stretch_video)
-                and duration_create > duration_true * 1.03
-                and duration_true > 0.2
-            ):
-                force_rate = min(max(duration_create / duration_true, 1.03), 2.8)
-                tmp_force = out_file + ".fit.ogg"
-                atempo = _atempo_filter_chain(force_rate)
-                rc = os.system(
-                    f"ffmpeg -y -loglevel panic -i {out_file} -filter:a {atempo} {tmp_force}"
-                )
-                if rc == 0 and os.path.isfile(tmp_force):
-                    os.replace(tmp_force, out_file)
-                    logger.info(
-                        f"Force-fit {filename}: {duration_create:.2f}s → "
-                        f"slot {duration_true:.2f}s (x{force_rate:.2f})"
+            if duration_create > duration_true * 1.08 and duration_true > 0.2:
+                if stretch_video:
+                    force_rate = min(duration_create / duration_true, 1.15)
+                    if force_rate <= 1.08:
+                        force_rate = 0  # skip
+                else:
+                    force_rate = min(max(duration_create / duration_true, 1.03), 2.8)
+                if force_rate and force_rate > 1.08:
+                    tmp_force = out_file + ".fit.ogg"
+                    atempo = _atempo_filter_chain(force_rate)
+                    rc = os.system(
+                        f"ffmpeg -y -loglevel panic -i {out_file} "
+                        f"-filter:a {atempo} {tmp_force}"
                     )
-                elif os.path.isfile(tmp_force):
-                    os.remove(tmp_force)
+                    if rc == 0 and os.path.isfile(tmp_force):
+                        os.replace(tmp_force, out_file)
+                        logger.info(
+                            f"Force-fit {filename}: {duration_create:.2f}s → "
+                            f"slot {duration_true:.2f}s (x{force_rate:.2f})"
+                        )
+                    elif os.path.isfile(tmp_force):
+                        os.remove(tmp_force)
         except Exception as error:
             logger.error(f"Force-fit failed for {filename}: {error}")
 
