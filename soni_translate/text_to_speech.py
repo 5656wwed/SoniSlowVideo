@@ -1265,6 +1265,42 @@ def _atempo_filter_chain(rate):
     return ",".join(filters)
 
 
+def _smart_sentence_gap(start, end, next_start, duration_tts=None):
+    """Adaptive pause between lines (no fixed 0.18s).
+
+    - Tight SRT (lines almost touch) → tiny gap so speech still has room
+    - Roomy SRT pause → keep a natural breath
+    - Long TTS vs slot → shrink gap (less rushed force-fit)
+    - Short TTS with room → slightly bigger gap (sounds less glued)
+    Always clamp so lines never glue and never steal the whole slot.
+    """
+    start = float(start)
+    end = float(end)
+    next_start = float(next_start)
+    srt_free = next_start - end  # silence already in subtitles after this line
+    span_to_next = next_start - start
+
+    if srt_free <= 0.05:
+        gap = 0.08
+    elif srt_free <= 0.15:
+        gap = 0.10
+    elif srt_free <= 0.35:
+        gap = min(0.16, max(0.10, srt_free * 0.55))
+    else:
+        gap = min(0.22, 0.12 + srt_free * 0.20)
+
+    if duration_tts is not None and span_to_next > 0.25:
+        room = max(0.2, span_to_next - gap)
+        if duration_tts > room * 1.12:
+            # Need more speaking time → smaller pause
+            gap = max(0.08, gap * 0.65)
+        elif duration_tts < room * 0.75:
+            # Plenty of room → tiny extra breath
+            gap = min(0.24, gap + 0.03)
+
+    return max(0.08, min(0.24, float(gap)))
+
+
 def accelerate_segments(
     result_diarize,
     max_accelerate_audio,
@@ -1277,6 +1313,7 @@ def accelerate_segments(
         logger.info("Stretch-video mode: keep natural voice (no force speed-up)")
     else:
         logger.info("Apply acceleration")
+    logger.info("Smart gaps: pause adapts to SRT room + voice length")
 
     (
         speakers_edge,
@@ -1294,8 +1331,6 @@ def accelerate_segments(
     speakers_list = []
 
     max_count_segments_idx = len(result_diarize["segments"]) - 1
-    # Pause between sentences (no glue, no overlap)
-    SENTENCE_GAP = 0.18
 
     for i, segment in tqdm(enumerate(result_diarize["segments"])):
         text = segment["text"]  # noqa
@@ -1304,15 +1339,23 @@ def accelerate_segments(
         speaker = segment["speaker"]
 
         filename = f"audio/{start}.ogg"
-
-        # Slot = time until next line, minus a real pause
-        duration_true = max(0.2, float(end) - float(start))
-        if i < max_count_segments_idx:
-            next_start = float(result_diarize["segments"][i + 1]["start"])
-            duration_true = max(0.2, next_start - float(start) - SENTENCE_GAP)
-
         duration_tts = librosa.get_duration(filename=filename)
         out_file = f"{folder_output}/{filename}"
+
+        # Slot = time until next line, minus a SMART pause (not fixed)
+        duration_true = max(0.2, float(end) - float(start))
+        sentence_gap = None
+        if i < max_count_segments_idx:
+            next_start = float(result_diarize["segments"][i + 1]["start"])
+            sentence_gap = _smart_sentence_gap(
+                start, end, next_start, duration_tts=duration_tts
+            )
+            duration_true = max(0.2, next_start - float(start) - sentence_gap)
+            if sentence_gap <= 0.09 or sentence_gap >= 0.20:
+                logger.info(
+                    f"Smart gap {filename}: pause={sentence_gap:.2f}s "
+                    f"slot={duration_true:.2f}s tts={duration_tts:.2f}s"
+                )
 
         if duration_true <= 0:
             acc_percentage = 1.0
@@ -1326,7 +1369,9 @@ def accelerate_segments(
         ):
             try:
                 next_start = float(result_diarize["segments"][i + 1]["start"])
-                duration_true = max(0.2, next_start - float(start) - 0.12)
+                # Tight pass: shrink gap so long lines get more room
+                tight_gap = max(0.08, (sentence_gap or 0.12) * 0.7)
+                duration_true = max(0.2, next_start - float(start) - tight_gap)
                 acc_percentage = duration_tts / duration_true
             except Exception as error:
                 logger.error(str(error))
