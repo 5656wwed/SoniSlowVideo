@@ -1090,6 +1090,7 @@ class SoniTranslate(SoniTrCache):
                 dub_audio_file,
                 False,
                 avoid_overlap,
+                smart_pack=STRETCH_VIDEO_TO_VOICE,
             )
 
         # Voiceless track, change with file

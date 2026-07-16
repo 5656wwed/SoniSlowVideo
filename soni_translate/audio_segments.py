@@ -54,7 +54,12 @@ class Mixer:
 
 
 def create_translated_audio(
-    result_diarize, audio_files, final_file, concat=False, avoid_overlap=False,
+    result_diarize,
+    audio_files,
+    final_file,
+    concat=False,
+    avoid_overlap=False,
+    smart_pack=False,
 ):
     total_duration = result_diarize["segments"][-1]["end"]  # in seconds
 
@@ -82,7 +87,78 @@ def create_translated_audio(
         run_command(command)
 
     else:
-        # silent audio with total_duration
+        # First pass: decide placement times (smart_pack collapses dead air)
+        BREATH = 0.05  # max silence between lines when smart packing
+        placements = []  # (start_sec, audio_file, AudioSegment)
+        last_end_time = 0.0
+        previous_speaker = ""
+        collapsed = 0
+
+        for idx, (line, audio_file) in enumerate(
+            tqdm(zip(result_diarize["segments"], audio_files))
+        ):
+            try:
+                audio = AudioSegment.from_file(audio_file)
+            except Exception as error:
+                logger.debug(str(error))
+                logger.error(f"Error audio file {audio_file}")
+                continue
+
+            srt_start = float(line["start"])
+            dur = len(audio) / 1000.0
+            start = srt_start
+
+            if smart_pack:
+                if idx == 0:
+                    start = srt_start
+                else:
+                    natural_gap = srt_start - last_end_time
+                    if natural_gap > BREATH:
+                        # Dead air from SRT timing → collapse to tiny breath
+                        start = last_end_time + BREATH
+                        collapsed += 1
+                        if collapsed <= 12 or collapsed % 25 == 0:
+                            logger.info(
+                                f"Smart pack {audio_file}: "
+                                f"gap {natural_gap:.2f}s → {BREATH:.2f}s"
+                            )
+                    elif natural_gap < 0:
+                        # Would overlap → push after previous + breath
+                        start = last_end_time + BREATH
+                    else:
+                        start = srt_start
+                last_end_time = start + dur
+            elif avoid_overlap:
+                speaker = line.get("speaker", "")
+                if (last_end_time - 0.500) > start:
+                    overlap_time = last_end_time - start
+                    if previous_speaker and previous_speaker != speaker:
+                        start = (last_end_time - 0.500)
+                    else:
+                        start = (last_end_time - 0.200)
+                    if overlap_time > 2.5:
+                        start = start - 0.3
+                    logger.info(
+                        f"Avoid overlap for {str(audio_file)} "
+                        f"with {str(start)}"
+                    )
+                previous_speaker = speaker
+                last_end_time = start + dur
+            else:
+                last_end_time = max(last_end_time, start + dur)
+
+            placements.append((start, audio_file, audio))
+
+        if smart_pack:
+            logger.info(
+                f"Smart pack: collapsed {collapsed} dead gaps "
+                f"(breath={BREATH:.2f}s); audio ends {last_end_time:.1f}s"
+            )
+            # Canvas = packed length only (no trailing SRT dead air)
+            total_duration = max(last_end_time + 0.05, 0.2)
+        else:
+            # Canvas long enough for SRT timeline + any overrun
+            total_duration = max(float(total_duration), last_end_time + 0.05)
         base_audio = AudioSegment.silent(
             duration=int(total_duration * 1000), frame_rate=41000
         )
@@ -94,41 +170,10 @@ def create_translated_audio(
             f"minutes and {int(total_duration % 60)} seconds"
         )
 
-        last_end_time = 0
-        previous_speaker = ""
-        for line, audio_file in tqdm(
-            zip(result_diarize["segments"], audio_files)
-        ):
-            start = float(line["start"])
-
-            # Overlay each audio at the corresponding time
+        for start, audio_file, audio in placements:
             try:
-                audio = AudioSegment.from_file(audio_file)
-                # audio_a = audio.speedup(playback_speed=1.5)
-
-                if avoid_overlap:
-                    speaker = line["speaker"]
-                    if (last_end_time - 0.500) > start:
-                        overlap_time = last_end_time - start
-                        if previous_speaker and previous_speaker != speaker:
-                            start = (last_end_time - 0.500)
-                        else:
-                            start = (last_end_time - 0.200)
-                        if overlap_time > 2.5:
-                            start = start - 0.3
-                        logger.info(
-                              f"Avoid overlap for {str(audio_file)} "
-                              f"with {str(start)}"
-                        )
-
-                    previous_speaker = speaker
-
-                    duration_tts_seconds = len(audio) / 1000.0  # to sec
-                    last_end_time = (start + duration_tts_seconds)
-
-                start_time = start * 1000  # to ms
                 combined_audio = combined_audio.overlay(
-                    audio, position=start_time
+                    audio, position=int(start * 1000)
                 )
             except Exception as error:
                 logger.debug(str(error))
