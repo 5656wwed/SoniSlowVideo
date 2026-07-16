@@ -7,14 +7,16 @@ from soni_translate.logging_setup import (
 import whisperx
 import torch
 import os
-from soni_translate.audio_segments import create_translated_audio
+from soni_translate.audio_segments import (
+    create_translated_audio,
+    build_scene_synced_video,
+)
 
-# SoniSlowVideo scene-sync mode:
-# Smart-pack + global video retime made narration great but ruined A/V sync.
-# Now: voice ~1.1x, keep SRT times, force-fit overruns only, no global video warp.
+# SoniSlowVideo: smart-pack narration + per-scene video match.
+# (Global whole-video setpts desynced pictures; piecewise scene match fixes that.)
 VOICE_BASE_SPEED = 1.1
-SMART_PACK = False
-STRETCH_VIDEO_TO_VOICE = False  # OFF = keep video timeline for scene sync
+SMART_PACK = True
+STRETCH_VIDEO_TO_VOICE = True  # with SMART_PACK → per-scene video retime
 os.environ["SONI_VOICE_SPEED"] = str(VOICE_BASE_SPEED)
 os.environ["SONI_SMART_PACK"] = "1" if SMART_PACK else "0"
 from soni_translate.text_to_speech import (
@@ -1212,90 +1214,76 @@ class SoniTranslate(SoniTrCache):
         ], {}):
             # Merge new audio + video (one ffmpeg pass when retiming)
             remove_files(video_output_file)
-            video_ratio = 1.0
-            if STRETCH_VIDEO_TO_VOICE and not is_audio_file(media_file):
+            scene_sync_done = False
+
+            # Preferred: smart-pack voice + per-scene video (flow + sync)
+            if (
+                SMART_PACK
+                and STRETCH_VIDEO_TO_VOICE
+                and not is_audio_file(media_file)
+                and os.path.isfile("smart_pack_timeline.json")
+            ):
                 try:
-                    import subprocess as _sp
-
-                    def _dur(path):
-                        out = _sp.check_output(
-                            [
-                                "ffprobe", "-v", "error",
-                                "-show_entries", "format=duration",
-                                "-of", "default=noprint_wrappers=1:nokey=1",
-                                path,
-                            ],
-                            text=True,
-                        ).strip()
-                        return float(out)
-
-                    v_dur = _dur(base_video_file)
-                    try:
-                        a_dur = _dur(dub_audio_file)
-                    except Exception:
-                        a_dur = _dur(mix_audio_file)
-                    ratio = (a_dur / v_dur) if v_dur > 0.1 else 1.0
-
-                    MIN_R, MAX_R = 0.65, 1.50
-                    if abs(ratio - 1.0) <= 0.02:
-                        logger.info(
-                            f"Video already matches voice "
-                            f"(voice {a_dur:.1f}s / video {v_dur:.1f}s, "
-                            f"ratio {ratio:.3f})"
-                        )
-                        video_ratio = 1.0
-                    else:
-                        video_ratio = max(MIN_R, min(MAX_R, ratio))
-                        remaining = ratio / video_ratio if video_ratio else 1.0
-                        if video_ratio > 1.0:
-                            logger.info(
-                                f"Slowing video ×{video_ratio:.3f} "
-                                f"(voice {a_dur:.1f}s / video {v_dur:.1f}s) "
-                                f"— long job, Gradio may show Connection error; "
-                                f"file still saves to outputs/"
-                            )
-                        else:
-                            logger.info(
-                                f"Speeding video ×{video_ratio:.3f} "
-                                f"(voice {a_dur:.1f}s / video {v_dur:.1f}s) "
-                                f"— long job, Gradio may show Connection error; "
-                                f"file still saves to outputs/"
-                            )
-
-                        if remaining > 1.05 or remaining < 0.95:
-                            sped = "audio_mix_smart.mp3"
-                            remove_files(sped)
-                            r = min(max(remaining, 0.80), 1.25)
-                            filters = []
-                            rr = r
-                            while rr > 2.0:
-                                filters.append("atempo=2.0")
-                                rr /= 2.0
-                            while rr < 0.5:
-                                filters.append("atempo=0.5")
-                                rr /= 0.5
-                            filters.append(f"atempo={rr:.3f}")
-                            af = ",".join(filters)
-                            logger.info(
-                                f"Also mild mix audio ×{r:.3f} "
-                                f"(after video retime clamp)"
-                            )
-                            run_command(
-                                f'ffmpeg -y -i "{mix_audio_file}" '
-                                f'-filter:a {af} "{sped}"'
-                            )
-                            mix_audio_file = sped
+                    logger.info(
+                        "Building scene-synced video "
+                        "(smart pack + per-scene match)..."
+                    )
+                    build_scene_synced_video(
+                        base_video_file,
+                        mix_audio_file,
+                        video_output_file,
+                        timeline_path="smart_pack_timeline.json",
+                    )
+                    scene_sync_done = True
                 except Exception as err:
-                    logger.error(f"Smart stretch failed: {err}")
-                    video_ratio = 1.0
+                    logger.error(
+                        f"Scene-sync video failed, fallback mux: {err}"
+                    )
 
-            # ONE encode: retime (if needed) + mux audio. Prefer NVENC (fast).
-            try:
+            if not scene_sync_done:
+                # Fallback: simple mux (and optional global retime)
+                video_ratio = 1.0
+                if STRETCH_VIDEO_TO_VOICE and not is_audio_file(media_file):
+                    try:
+                        import subprocess as _sp
+
+                        def _dur(path):
+                            out = _sp.check_output(
+                                [
+                                    "ffprobe", "-v", "error",
+                                    "-show_entries", "format=duration",
+                                    "-of",
+                                    "default=noprint_wrappers=1:nokey=1",
+                                    path,
+                                ],
+                                text=True,
+                            ).strip()
+                            return float(out)
+
+                        v_dur = _dur(base_video_file)
+                        try:
+                            a_dur = _dur(dub_audio_file)
+                        except Exception:
+                            a_dur = _dur(mix_audio_file)
+                        ratio = (a_dur / v_dur) if v_dur > 0.1 else 1.0
+                        MIN_R, MAX_R = 0.65, 1.50
+                        if abs(ratio - 1.0) > 0.02:
+                            video_ratio = max(MIN_R, min(MAX_R, ratio))
+                            logger.info(
+                                f"Fallback global video x{video_ratio:.3f} "
+                                f"(voice {a_dur:.1f}s / video {v_dur:.1f}s)"
+                            )
+                    except Exception as err:
+                        logger.error(f"Fallback retime probe failed: {err}")
+                        video_ratio = 1.0
+
                 import subprocess as _sp
                 import time as _time
 
                 def _run_ffmpeg_logged(cmd_list, label):
-                    logger.info(f"{label}: starting ({' '.join(cmd_list[:6])} ...)")
+                    logger.info(
+                        f"{label}: starting ({' '.join(cmd_list[:6])} ...)"
+                    )
                     t0 = _time.time()
                     proc = _sp.Popen(
                         cmd_list,
@@ -1314,45 +1302,28 @@ class SoniTranslate(SoniTrCache):
                             last_log = now
                     rc = proc.wait()
                     logger.info(
-                        f"{label}: finished rc={rc} in {(_time.time()-t0)/60:.1f} min"
+                        f"{label}: finished rc={rc} in "
+                        f"{(_time.time()-t0)/60:.1f} min"
                     )
                     return rc
 
                 ok = False
                 if abs(video_ratio - 1.0) > 0.02:
                     vf = f"setpts={video_ratio:.6f}*PTS"
-                    # 1) GPU NVENC (Colab T4) — much faster for long videos
-                    cmd_nv = [
+                    cmd_cpu = [
                         "ffmpeg", "-y",
-                        "-hwaccel", "cuda",
                         "-i", base_video_file,
                         "-i", mix_audio_file,
                         "-filter:v", vf,
                         "-map", "0:v:0", "-map", "1:a:0",
-                        "-c:v", "h264_nvenc", "-preset", "p1", "-cq", "23",
+                        "-c:v", "libx264", "-preset", "ultrafast",
+                        "-crf", "23", "-threads", "0",
                         "-c:a", "aac", "-b:a", "192k",
                         "-shortest",
                         video_output_file,
                     ]
-                    if _run_ffmpeg_logged(cmd_nv, "Retime+mux NVENC") == 0:
+                    if _run_ffmpeg_logged(cmd_cpu, "Fallback retime+mux") == 0:
                         ok = True
-                    else:
-                        remove_files(video_output_file)
-                        # 2) CPU ultrafast (reliable fallback)
-                        cmd_cpu = [
-                            "ffmpeg", "-y",
-                            "-i", base_video_file,
-                            "-i", mix_audio_file,
-                            "-filter:v", vf,
-                            "-map", "0:v:0", "-map", "1:a:0",
-                            "-c:v", "libx264", "-preset", "ultrafast",
-                            "-crf", "23", "-threads", "0",
-                            "-c:a", "aac", "-b:a", "192k",
-                            "-shortest",
-                            video_output_file,
-                        ]
-                        if _run_ffmpeg_logged(cmd_cpu, "Retime+mux CPU") == 0:
-                            ok = True
                 else:
                     cmd_copy = [
                         "ffmpeg", "-y",
@@ -1365,17 +1336,13 @@ class SoniTranslate(SoniTrCache):
                     ]
                     if _run_ffmpeg_logged(cmd_copy, "Mux copy") == 0:
                         ok = True
-
-                if not ok or not os.path.isfile(video_output_file):
-                    raise Exception("ffmpeg retime/mux failed")
-            except Exception as err:
-                logger.error(f"Final mux failed: {err}")
-                # Last-ditch simple mux without retime
-                run_command(
-                    f'ffmpeg -y -i "{base_video_file}" -i "{mix_audio_file}" '
-                    f'-c:v copy -c:a aac -map 0:v -map 1:a -shortest '
-                    f'"{video_output_file}"'
-                )
+                if not ok:
+                    run_command(
+                        f'ffmpeg -y -i "{base_video_file}" '
+                        f'-i "{mix_audio_file}" '
+                        f'-c:v copy -c:a aac -map 0:v -map 1:a -shortest '
+                        f'"{video_output_file}"'
+                    )
 
         output = media_out(
             media_file,
