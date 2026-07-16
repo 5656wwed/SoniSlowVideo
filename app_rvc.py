@@ -1204,16 +1204,15 @@ class SoniTranslate(SoniTrCache):
             burn_subtitles_to_video,
             STRETCH_VIDEO_TO_VOICE,
         ], {}):
-            # Merge new audio + video
+            # Merge new audio + video (one ffmpeg pass when retiming)
             remove_files(video_output_file)
+            video_ratio = 1.0
             if STRETCH_VIDEO_TO_VOICE and not is_audio_file(media_file):
-                # Match VIDEO to packed DUB length (slow OR speed).
-                # Bug was: mix used original track length ≈ video, so ratio≈1
-                # and retime never ran even when smart-pack shortened speech.
                 try:
+                    import subprocess as _sp
+
                     def _dur(path):
-                        import subprocess
-                        out = subprocess.check_output(
+                        out = _sp.check_output(
                             [
                                 "ffprobe", "-v", "error",
                                 "-show_entries", "format=duration",
@@ -1225,16 +1224,12 @@ class SoniTranslate(SoniTrCache):
                         return float(out)
 
                     v_dur = _dur(base_video_file)
-                    # Prefer dub track (true speech length after smart pack)
                     try:
                         a_dur = _dur(dub_audio_file)
                     except Exception:
                         a_dur = _dur(mix_audio_file)
                     ratio = (a_dur / v_dur) if v_dur > 0.1 else 1.0
 
-                    # setpts multiplier = audio/video:
-                    #   >1 → slow video, <1 → speed video
-                    # Clamp so it doesn't look absurd
                     MIN_R, MAX_R = 0.65, 1.50
                     if abs(ratio - 1.0) <= 0.02:
                         logger.info(
@@ -1242,35 +1237,28 @@ class SoniTranslate(SoniTrCache):
                             f"(voice {a_dur:.1f}s / video {v_dur:.1f}s, "
                             f"ratio {ratio:.3f})"
                         )
+                        video_ratio = 1.0
                     else:
                         video_ratio = max(MIN_R, min(MAX_R, ratio))
                         remaining = ratio / video_ratio if video_ratio else 1.0
-
-                        stretched = "video_stretched.mp4"
-                        remove_files(stretched)
                         if video_ratio > 1.0:
                             logger.info(
                                 f"Slowing video ×{video_ratio:.3f} "
-                                f"(voice {a_dur:.1f}s / video {v_dur:.1f}s)"
+                                f"(voice {a_dur:.1f}s / video {v_dur:.1f}s) "
+                                f"— long job, Gradio may show Connection error; "
+                                f"file still saves to outputs/"
                             )
                         else:
                             logger.info(
                                 f"Speeding video ×{video_ratio:.3f} "
-                                f"(voice {a_dur:.1f}s / video {v_dur:.1f}s)"
+                                f"(voice {a_dur:.1f}s / video {v_dur:.1f}s) "
+                                f"— long job, Gradio may show Connection error; "
+                                f"file still saves to outputs/"
                             )
-                        run_command(
-                            f'ffmpeg -y -i "{base_video_file}" '
-                            f'-filter:v "setpts={video_ratio:.6f}*PTS" -an '
-                            f'-c:v libx264 -preset veryfast -crf 20 '
-                            f'"{stretched}"'
-                        )
-                        base_video_file = stretched
 
-                        # If we hit the clamp, nudge full-track audio a little
                         if remaining > 1.05 or remaining < 0.95:
                             sped = "audio_mix_smart.mp3"
                             remove_files(sped)
-                            # atempo: >1 faster/shorter, <1 slower/longer
                             r = min(max(remaining, 0.80), 1.25)
                             filters = []
                             rr = r
@@ -1293,14 +1281,95 @@ class SoniTranslate(SoniTrCache):
                             mix_audio_file = sped
                 except Exception as err:
                     logger.error(f"Smart stretch failed: {err}")
+                    video_ratio = 1.0
 
-            # Re-encode video if we stretched (already h264); copy otherwise.
-            # -shortest keeps A/V ends together.
-            run_command(
-                f'ffmpeg -y -i "{base_video_file}" -i "{mix_audio_file}" '
-                f'-c:v copy -c:a aac -map 0:v -map 1:a -shortest '
-                f'"{video_output_file}"'
-            )
+            # ONE encode: retime (if needed) + mux audio. Prefer NVENC (fast).
+            try:
+                import subprocess as _sp
+                import time as _time
+
+                def _run_ffmpeg_logged(cmd_list, label):
+                    logger.info(f"{label}: starting ({' '.join(cmd_list[:6])} ...)")
+                    t0 = _time.time()
+                    proc = _sp.Popen(
+                        cmd_list,
+                        stdout=_sp.PIPE,
+                        stderr=_sp.STDOUT,
+                        text=True,
+                        bufsize=1,
+                    )
+                    last_log = 0.0
+                    assert proc.stdout is not None
+                    for line in proc.stdout:
+                        line = line.strip()
+                        now = _time.time()
+                        if line.startswith("frame=") and (now - last_log) > 15:
+                            logger.info(f"{label}: {line[:120]}")
+                            last_log = now
+                    rc = proc.wait()
+                    logger.info(
+                        f"{label}: finished rc={rc} in {(_time.time()-t0)/60:.1f} min"
+                    )
+                    return rc
+
+                ok = False
+                if abs(video_ratio - 1.0) > 0.02:
+                    vf = f"setpts={video_ratio:.6f}*PTS"
+                    # 1) GPU NVENC (Colab T4) — much faster for long videos
+                    cmd_nv = [
+                        "ffmpeg", "-y",
+                        "-hwaccel", "cuda",
+                        "-i", base_video_file,
+                        "-i", mix_audio_file,
+                        "-filter:v", vf,
+                        "-map", "0:v:0", "-map", "1:a:0",
+                        "-c:v", "h264_nvenc", "-preset", "p1", "-cq", "23",
+                        "-c:a", "aac", "-b:a", "192k",
+                        "-shortest",
+                        video_output_file,
+                    ]
+                    if _run_ffmpeg_logged(cmd_nv, "Retime+mux NVENC") == 0:
+                        ok = True
+                    else:
+                        remove_files(video_output_file)
+                        # 2) CPU ultrafast (reliable fallback)
+                        cmd_cpu = [
+                            "ffmpeg", "-y",
+                            "-i", base_video_file,
+                            "-i", mix_audio_file,
+                            "-filter:v", vf,
+                            "-map", "0:v:0", "-map", "1:a:0",
+                            "-c:v", "libx264", "-preset", "ultrafast",
+                            "-crf", "23", "-threads", "0",
+                            "-c:a", "aac", "-b:a", "192k",
+                            "-shortest",
+                            video_output_file,
+                        ]
+                        if _run_ffmpeg_logged(cmd_cpu, "Retime+mux CPU") == 0:
+                            ok = True
+                else:
+                    cmd_copy = [
+                        "ffmpeg", "-y",
+                        "-i", base_video_file,
+                        "-i", mix_audio_file,
+                        "-map", "0:v:0", "-map", "1:a:0",
+                        "-c:v", "copy", "-c:a", "aac", "-b:a", "192k",
+                        "-shortest",
+                        video_output_file,
+                    ]
+                    if _run_ffmpeg_logged(cmd_copy, "Mux copy") == 0:
+                        ok = True
+
+                if not ok or not os.path.isfile(video_output_file):
+                    raise Exception("ffmpeg retime/mux failed")
+            except Exception as err:
+                logger.error(f"Final mux failed: {err}")
+                # Last-ditch simple mux without retime
+                run_command(
+                    f'ffmpeg -y -i "{base_video_file}" -i "{mix_audio_file}" '
+                    f'-c:v copy -c:a aac -map 0:v -map 1:a -shortest '
+                    f'"{video_output_file}"'
+                )
 
         output = media_out(
             media_file,
@@ -3019,7 +3088,12 @@ if __name__ == "__main__":
 
     app = create_gui(args.theme, logs_in_gui=args.logs_in_gui)
 
-    app.queue()
+    # Long dub jobs (30–60+ min) need a patient queue; UI may still drop
+    # on Gradio share tunnels — output still lands in outputs/.
+    try:
+        app.queue(default_concurrency_limit=1, status_update_rate=10)
+    except TypeError:
+        app.queue()
 
     app.launch(
         max_threads=1,
