@@ -9,8 +9,14 @@ import torch
 import os
 from soni_translate.audio_segments import create_translated_audio
 
-# SoniSlowVideo: slow the VIDEO to fit natural voice (not rush TTS)
-STRETCH_VIDEO_TO_VOICE = True
+# SoniSlowVideo scene-sync mode:
+# Smart-pack + global video retime made narration great but ruined A/V sync.
+# Now: voice ~1.1x, keep SRT times, force-fit overruns only, no global video warp.
+VOICE_BASE_SPEED = 1.1
+SMART_PACK = False
+STRETCH_VIDEO_TO_VOICE = False  # OFF = keep video timeline for scene sync
+os.environ["SONI_VOICE_SPEED"] = str(VOICE_BASE_SPEED)
+os.environ["SONI_SMART_PACK"] = "1" if SMART_PACK else "0"
 from soni_translate.text_to_speech import (
     audio_segmentation_to_voice,
     edge_tts_voices_list,
@@ -1090,7 +1096,7 @@ class SoniTranslate(SoniTrCache):
                 dub_audio_file,
                 False,
                 avoid_overlap,
-                smart_pack=STRETCH_VIDEO_TO_VOICE,
+                smart_pack=SMART_PACK,
             )
 
         # Voiceless track, change with file

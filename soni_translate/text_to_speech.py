@@ -960,7 +960,7 @@ def segments_kokoro_tts(filtered_kokoro_segments, TRANSLATE_AUDIO_TO):
         start = float(start)
         end = float(end)
         nxt = [s for s in starts_sorted if s > start + 1e-6]
-        gap = 0.18  # reserved silence before next sentence
+        gap = 0.06  # tiny breath only — keep SRT scene timing
         if nxt:
             return max(0.35, nxt[0] - start - gap)
         return max(0.35, end - start)
@@ -993,14 +993,21 @@ def segments_kokoro_tts(filtered_kokoro_segments, TRANSLATE_AUDIO_TO):
         text = _re.sub(r"\.(\s+[A-Za-z])", r"\1", text)
         text = _re.sub(r"\s+", " ", text).strip()
 
-        # SoniSlowVideo: always natural Kokoro pace.
-        # Smart-pack + video retime (slow OR speed) handle sync.
+        # Scene-sync: base ~1.1x (user request). Only go faster if slot is tight.
         slot = _slot_for(start, end)
-        speed = 1.0
+        base = float(os.environ.get("SONI_VOICE_SPEED", "1.1") or "1.1")
+        base = max(0.9, min(1.25, base))
+        est_sec = max(0.4, len(text) / 14.0)  # rough natural length
+        # At base speed, estimated duration ≈ est_sec / base
+        need = (est_sec / base) / max(slot, 0.35)
+        speed = base
+        if need > 1.03:
+            # still too long for this SRT slot → speed up more (cap 1.28)
+            speed = min(1.28, base * need)
         speed = round(float(speed), 2)
 
         logger.info(
-            f"Kokoro [{voice}] speed={speed} (natural) est_slot={slot:.2f}s: "
+            f"Kokoro [{voice}] speed={speed} (base={base}) slot={slot:.2f}s: "
             f"{text[:55]}... → {filename}"
         )
 
@@ -1281,12 +1288,10 @@ def accelerate_segments(
     folder_output="audio2",
     stretch_video=False,
 ):
-    if stretch_video:
-        logger.info(
-            "Stretch-video mode: natural voice + smart pack (no reserved gaps)"
-        )
-    else:
-        logger.info("Apply acceleration")
+    logger.info(
+        "Scene-sync: fit each line into its SRT slot "
+        "(no smart-pack, no global video warp)"
+    )
 
     (
         speakers_edge,
@@ -1315,55 +1320,43 @@ def accelerate_segments(
         duration_tts = librosa.get_duration(filename=filename)
         out_file = f"{folder_output}/{filename}"
 
-        # Stretch mode: do not force-fit to SRT slots / invent pauses.
-        # Smart pack + video stretch handle timing later.
-        if stretch_video:
+        # Slot = time until next SRT line (tiny breath). Keeps scene sync.
+        duration_true = max(0.2, float(end) - float(start))
+        sentence_gap = 0.05
+        if i < max_count_segments_idx:
+            next_start = float(result_diarize["segments"][i + 1]["start"])
+            duration_true = max(0.2, next_start - float(start) - sentence_gap)
+
+        if duration_true <= 0:
             acc_percentage = 1.0
-            duration_true = max(0.2, float(end) - float(start))
         else:
-            duration_true = max(0.2, float(end) - float(start))
-            sentence_gap = None
-            if i < max_count_segments_idx:
-                next_start = float(result_diarize["segments"][i + 1]["start"])
-                sentence_gap = _smart_sentence_gap(
-                    start, end, next_start, duration_tts=duration_tts
+            acc_percentage = duration_tts / duration_true
+
+        if (
+            acceleration_rate_regulation
+            and acc_percentage >= 1.3
+            and i < max_count_segments_idx
+        ):
+            try:
+                next_start = float(
+                    result_diarize["segments"][i + 1]["start"]
                 )
                 duration_true = max(
-                    0.2, next_start - float(start) - sentence_gap
+                    0.2, next_start - float(start) - 0.03
                 )
-
-            if duration_true <= 0:
-                acc_percentage = 1.0
-            else:
                 acc_percentage = duration_tts / duration_true
+            except Exception as error:
+                logger.error(str(error))
 
-            if (
-                acceleration_rate_regulation
-                and acc_percentage >= 1.3
-                and i < max_count_segments_idx
-            ):
-                try:
-                    next_start = float(
-                        result_diarize["segments"][i + 1]["start"]
-                    )
-                    tight_gap = max(0.03, (sentence_gap or 0.03))
-                    duration_true = max(
-                        0.2, next_start - float(start) - tight_gap
-                    )
-                    acc_percentage = duration_tts / duration_true
-                except Exception as error:
-                    logger.error(str(error))
-
-            if acc_percentage <= 1.03:
-                acc_percentage = 1.0
-            else:
-                needed = acc_percentage
-                acc_percentage = needed
-                if needed > float(max_accelerate_audio):
-                    logger.info(
-                        f"Heavy fit {filename}: need x{needed:.2f} "
-                        f"for slot {duration_true:.2f}s"
-                    )
+        # Fits → leave. Too long → speed up to fit slot (never stretch short).
+        if acc_percentage <= 1.03:
+            acc_percentage = 1.0
+        else:
+            if acc_percentage > float(max_accelerate_audio):
+                logger.info(
+                    f"Heavy fit {filename}: need x{acc_percentage:.2f} "
+                    f"for slot {duration_true:.2f}s"
+                )
 
         if speaker in speakers_edge:
             info_enc = sf.info(filename).format
@@ -1380,34 +1373,33 @@ def accelerate_segments(
                 f"-filter:a {atempo} {out_file}"
             )
 
-        # Force-fit only when NOT stretch-video (stretch packs + slows video)
-        if not stretch_video:
-            try:
-                duration_create = librosa.get_duration(filename=out_file)
-                if (
-                    duration_create > duration_true * 1.08
-                    and duration_true > 0.2
-                ):
-                    force_rate = min(
-                        max(duration_create / duration_true, 1.03), 2.8
+        # Safety force-fit if still over slot
+        try:
+            duration_create = librosa.get_duration(filename=out_file)
+            if (
+                duration_create > duration_true * 1.05
+                and duration_true > 0.2
+            ):
+                force_rate = min(
+                    max(duration_create / duration_true, 1.03), 2.8
+                )
+                if force_rate > 1.05:
+                    tmp_force = out_file + ".fit.ogg"
+                    atempo = _atempo_filter_chain(force_rate)
+                    rc = os.system(
+                        f"ffmpeg -y -loglevel panic -i {out_file} "
+                        f"-filter:a {atempo} {tmp_force}"
                     )
-                    if force_rate > 1.08:
-                        tmp_force = out_file + ".fit.ogg"
-                        atempo = _atempo_filter_chain(force_rate)
-                        rc = os.system(
-                            f"ffmpeg -y -loglevel panic -i {out_file} "
-                            f"-filter:a {atempo} {tmp_force}"
+                    if rc == 0 and os.path.isfile(tmp_force):
+                        os.replace(tmp_force, out_file)
+                        logger.info(
+                            f"Force-fit {filename}: {duration_create:.2f}s → "
+                            f"slot {duration_true:.2f}s (x{force_rate:.2f})"
                         )
-                        if rc == 0 and os.path.isfile(tmp_force):
-                            os.replace(tmp_force, out_file)
-                            logger.info(
-                                f"Force-fit {filename}: {duration_create:.2f}s → "
-                                f"slot {duration_true:.2f}s (x{force_rate:.2f})"
-                            )
-                        elif os.path.isfile(tmp_force):
-                            os.remove(tmp_force)
-            except Exception as error:
-                logger.error(f"Force-fit failed for {filename}: {error}")
+                    elif os.path.isfile(tmp_force):
+                        os.remove(tmp_force)
+        except Exception as error:
+            logger.error(f"Force-fit failed for {filename}: {error}")
 
         audio_files.append(out_file)
         speaker = "TTS Speaker {:02d}".format(int(speaker[-2:]) + 1)
