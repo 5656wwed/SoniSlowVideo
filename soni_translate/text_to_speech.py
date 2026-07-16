@@ -993,24 +993,15 @@ def segments_kokoro_tts(filtered_kokoro_segments, TRANSLATE_AUDIO_TO):
         text = _re.sub(r"\.(\s+[A-Za-z])", r"\1", text)
         text = _re.sub(r"\s+", " ", text).strip()
 
-        # Base ~1.1x. With smart-pack, keep steady pace (video matches scene).
+        # Locked pace: default 1.1x only. Never auto-rush higher.
         slot = _slot_for(start, end)
         base = float(os.environ.get("SONI_VOICE_SPEED", "1.1") or "1.1")
-        base = max(0.9, min(1.25, base))
-        smart = os.environ.get("SONI_SMART_PACK", "0") == "1"
-        if smart:
-            speed = base
-        else:
-            est_sec = max(0.4, len(text) / 14.0)
-            need = (est_sec / base) / max(slot, 0.35)
-            speed = base
-            if need > 1.03:
-                speed = min(1.28, base * need)
+        base = max(0.95, min(1.15, base))  # hard cap range
+        speed = base
         speed = round(float(speed), 2)
 
         logger.info(
-            f"Kokoro [{voice}] speed={speed} (base={base}"
-            f"{', smart-pack' if smart else ''}) slot={slot:.2f}s: "
+            f"Kokoro [{voice}] speed={speed} (locked) slot={slot:.2f}s: "
             f"{text[:55]}... → {filename}"
         )
 
@@ -1362,11 +1353,19 @@ def accelerate_segments(
 
             if acc_percentage <= 1.03:
                 acc_percentage = 1.0
-            elif acc_percentage > float(max_accelerate_audio):
-                logger.info(
-                    f"Heavy fit {filename}: need x{acc_percentage:.2f} "
-                    f"for slot {duration_true:.2f}s"
-                )
+            else:
+                # Cap so we never chipmunk the line
+                if acc_percentage > 1.35:
+                    logger.info(
+                        f"Cap fit {filename}: need x{acc_percentage:.2f} "
+                        f"→ max 1.35 for slot {duration_true:.2f}s"
+                    )
+                    acc_percentage = 1.35
+                elif acc_percentage > float(max_accelerate_audio):
+                    logger.info(
+                        f"Heavy fit {filename}: need x{acc_percentage:.2f} "
+                        f"for slot {duration_true:.2f}s"
+                    )
 
         if speaker in speakers_edge:
             info_enc = sf.info(filename).format
@@ -1376,7 +1375,7 @@ def accelerate_segments(
         if acc_percentage == 1.0 and info_enc == "OGG":
             copy_files(filename, f"{folder_output}{os.sep}audio")
         else:
-            acc_percentage = max(1.03, min(float(acc_percentage), 2.8))
+            acc_percentage = max(1.03, min(float(acc_percentage), 1.35))
             atempo = _atempo_filter_chain(acc_percentage)
             os.system(
                 f"ffmpeg -y -loglevel panic -i {filename} "
@@ -1391,7 +1390,7 @@ def accelerate_segments(
                     and duration_true > 0.2
                 ):
                     force_rate = min(
-                        max(duration_create / duration_true, 1.03), 2.8
+                        max(duration_create / duration_true, 1.03), 1.35
                     )
                     if force_rate > 1.05:
                         tmp_force = out_file + ".fit.ogg"

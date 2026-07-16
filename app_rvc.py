@@ -12,13 +12,17 @@ from soni_translate.audio_segments import (
     build_scene_synced_video,
 )
 
-# SoniSlowVideo: smart-pack narration + per-scene video match.
-# (Global whole-video setpts desynced pictures; piecewise scene match fixes that.)
+# SoniSlowVideo — simple 1.1x sync (user request):
+# - Voice ONLY 1.1x (not faster)
+# - Lines stay on SRT times (no smart-pack early talk)
+# - Video stays 1.0 on the same timeline → no "hear before see"
+# - Mild force-fit only if a line overruns the next cue
 VOICE_BASE_SPEED = 1.1
-SMART_PACK = True
-STRETCH_VIDEO_TO_VOICE = True  # with SMART_PACK → per-scene video retime
+SMART_PACK = False
+STRETCH_VIDEO_TO_VOICE = False
 os.environ["SONI_VOICE_SPEED"] = str(VOICE_BASE_SPEED)
-os.environ["SONI_SMART_PACK"] = "1" if SMART_PACK else "0"
+os.environ["SONI_SMART_PACK"] = "0"
+os.environ["SONI_VOICE_SPEED_LOCK"] = "1"  # never exceed base
 from soni_translate.text_to_speech import (
     audio_segmentation_to_voice,
     edge_tts_voices_list,
