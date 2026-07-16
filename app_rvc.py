@@ -1121,21 +1121,45 @@ class SoniTranslate(SoniTrCache):
             mix_method_audio,
             volume_original_audio,
             volume_translated_audio,
-            voiceless_track
+            voiceless_track,
+            STRETCH_VIDEO_TO_VOICE,
         ], {}):
             # TYPE MIX AUDIO
             remove_files(mix_audio_file)
-            command_volume_mix = f'ffmpeg -y -i {base_audio_wav} -i {dub_audio_file} -filter_complex "[0:0]volume={volume_original_audio}[a];[1:0]volume={volume_translated_audio}[b];[a][b]amix=inputs=2:duration=longest" -c:a libmp3lame {mix_audio_file}'
-            command_background_mix = f'ffmpeg -i {base_audio_wav} -i {dub_audio_file} -filter_complex "[1:a]asplit=2[sc][mix];[0:a][sc]sidechaincompress=threshold=0.003:ratio=20[bg]; [bg][mix]amerge[final]" -map [final] {mix_audio_file}'
+            if STRETCH_VIDEO_TO_VOICE:
+                # Dub is master clock (smart-pack length). Do NOT pad to original video.
+                # Input0 = dub, amix duration=first → mix length = packed voice.
+                command_volume_mix = (
+                    f'ffmpeg -y -i {dub_audio_file} -i {base_audio_wav} '
+                    f'-filter_complex "'
+                    f'[0:0]volume={volume_translated_audio}[b];'
+                    f'[1:0]volume={volume_original_audio}[a];'
+                    f'[b][a]amix=inputs=2:duration=first:dropout_transition=2[out]" '
+                    f'-map "[out]" -c:a libmp3lame {mix_audio_file}'
+                )
+                command_background_mix = command_volume_mix
+            else:
+                command_volume_mix = (
+                    f'ffmpeg -y -i {base_audio_wav} -i {dub_audio_file} '
+                    f'-filter_complex "'
+                    f'[0:0]volume={volume_original_audio}[a];'
+                    f'[1:0]volume={volume_translated_audio}[b];'
+                    f'[a][b]amix=inputs=2:duration=longest" '
+                    f'-c:a libmp3lame {mix_audio_file}'
+                )
+                command_background_mix = (
+                    f'ffmpeg -i {base_audio_wav} -i {dub_audio_file} '
+                    f'-filter_complex "'
+                    f'[1:a]asplit=2[sc][mix];'
+                    f'[0:a][sc]sidechaincompress=threshold=0.003:ratio=20[bg]; '
+                    f'[bg][mix]amerge[final]" -map [final] {mix_audio_file}'
+                )
             if mix_method_audio == "Adjusting volumes and mixing audio":
-                # volume mix
                 run_command(command_volume_mix)
             else:
                 try:
-                    # background mix
                     run_command(command_background_mix)
                 except Exception as error_mix:
-                    # volume mix except
                     logger.error(str(error_mix))
                     run_command(command_volume_mix)
 
@@ -1183,7 +1207,9 @@ class SoniTranslate(SoniTrCache):
             # Merge new audio + video
             remove_files(video_output_file)
             if STRETCH_VIDEO_TO_VOICE and not is_audio_file(media_file):
-                # Intelligent: only slow video when voice is clearly longer
+                # Match VIDEO to packed DUB length (slow OR speed).
+                # Bug was: mix used original track length ≈ video, so ratio≈1
+                # and retime never ran even when smart-pack shortened speech.
                 try:
                     def _dur(path):
                         import subprocess
@@ -1199,54 +1225,66 @@ class SoniTranslate(SoniTrCache):
                         return float(out)
 
                     v_dur = _dur(base_video_file)
-                    a_dur = _dur(mix_audio_file)
+                    # Prefer dub track (true speech length after smart pack)
+                    try:
+                        a_dur = _dur(dub_audio_file)
+                    except Exception:
+                        a_dur = _dur(mix_audio_file)
                     ratio = (a_dur / v_dur) if v_dur > 0.1 else 1.0
 
-                    # Thresholds (smart):
-                    #  <= 1.08 : fits → NO video slow
-                    #  1.08–1.35 : slow video a bit
-                    #  > 1.35 : slow video max 1.35 + mild full-track audio speed
-                    if ratio <= 1.08:
+                    # setpts multiplier = audio/video:
+                    #   >1 → slow video, <1 → speed video
+                    # Clamp so it doesn't look absurd
+                    MIN_R, MAX_R = 0.65, 1.50
+                    if abs(ratio - 1.0) <= 0.02:
                         logger.info(
-                            f"No video stretch needed "
+                            f"Video already matches voice "
                             f"(voice {a_dur:.1f}s / video {v_dur:.1f}s, "
                             f"ratio {ratio:.3f})"
                         )
                     else:
-                        video_ratio = min(ratio, 1.35)
-                        remaining = ratio / video_ratio  # 1.0 if ratio<=1.35
+                        video_ratio = max(MIN_R, min(MAX_R, ratio))
+                        remaining = ratio / video_ratio if video_ratio else 1.0
 
-                        if video_ratio > 1.08:
-                            stretched = "video_stretched.mp4"
-                            remove_files(stretched)
+                        stretched = "video_stretched.mp4"
+                        remove_files(stretched)
+                        if video_ratio > 1.0:
                             logger.info(
                                 f"Slowing video ×{video_ratio:.3f} "
                                 f"(voice {a_dur:.1f}s / video {v_dur:.1f}s)"
                             )
-                            run_command(
-                                f'ffmpeg -y -i "{base_video_file}" '
-                                f'-filter:v "setpts={video_ratio:.6f}*PTS" -an '
-                                f'-c:v libx264 -preset veryfast -crf 20 '
-                                f'"{stretched}"'
+                        else:
+                            logger.info(
+                                f"Speeding video ×{video_ratio:.3f} "
+                                f"(voice {a_dur:.1f}s / video {v_dur:.1f}s)"
                             )
-                            base_video_file = stretched
+                        run_command(
+                            f'ffmpeg -y -i "{base_video_file}" '
+                            f'-filter:v "setpts={video_ratio:.6f}*PTS" -an '
+                            f'-c:v libx264 -preset veryfast -crf 20 '
+                            f'"{stretched}"'
+                        )
+                        base_video_file = stretched
 
-                        if remaining > 1.05:
-                            # Still too long after max video stretch → mild audio
+                        # If we hit the clamp, nudge full-track audio a little
+                        if remaining > 1.05 or remaining < 0.95:
                             sped = "audio_mix_smart.mp3"
                             remove_files(sped)
-                            # chain atempo for remaining
-                            r = min(remaining, 1.25)
+                            # atempo: >1 faster/shorter, <1 slower/longer
+                            r = min(max(remaining, 0.80), 1.25)
                             filters = []
                             rr = r
                             while rr > 2.0:
                                 filters.append("atempo=2.0")
                                 rr /= 2.0
+                            while rr < 0.5:
+                                filters.append("atempo=0.5")
+                                rr /= 0.5
                             filters.append(f"atempo={rr:.3f}")
                             af = ",".join(filters)
                             logger.info(
-                                f"Also mild voice speed ×{r:.3f} "
-                                f"(after video stretch cap)"
+                                f"Also mild mix audio ×{r:.3f} "
+                                f"(after video retime clamp)"
                             )
                             run_command(
                                 f'ffmpeg -y -i "{mix_audio_file}" '
@@ -1256,6 +1294,8 @@ class SoniTranslate(SoniTrCache):
                 except Exception as err:
                     logger.error(f"Smart stretch failed: {err}")
 
+            # Re-encode video if we stretched (already h264); copy otherwise.
+            # -shortest keeps A/V ends together.
             run_command(
                 f'ffmpeg -y -i "{base_video_file}" -i "{mix_audio_file}" '
                 f'-c:v copy -c:a aac -map 0:v -map 1:a -shortest '

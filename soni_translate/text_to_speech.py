@@ -993,19 +993,15 @@ def segments_kokoro_tts(filtered_kokoro_segments, TRANSLATE_AUDIO_TO):
         text = _re.sub(r"\.(\s+[A-Za-z])", r"\1", text)
         text = _re.sub(r"\s+", " ", text).strip()
 
-        # Natural pace first; only a little faster when the slot is tight
-        # (avoids harsh ffmpeg force-fit that sounds rushed)
+        # SoniSlowVideo: always natural Kokoro pace.
+        # Smart-pack + video retime (slow OR speed) handle sync.
         slot = _slot_for(start, end)
-        est_sec = max(0.4, len(text) / 14.0)
-        # SoniSlowVideo: prefer natural pace; only mild speed-up when needed
-        # (video stretch does the heavy sync work)
         speed = 1.0
-        if est_sec > slot:
-            speed = min(1.08, max(1.0, est_sec / slot))
         speed = round(float(speed), 2)
 
         logger.info(
-            f"Kokoro [{voice}] speed={speed} slot={slot:.2f}s: {text[:55]}... → {filename}"
+            f"Kokoro [{voice}] speed={speed} (natural) est_slot={slot:.2f}s: "
+            f"{text[:55]}... → {filename}"
         )
 
         try:
