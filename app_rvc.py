@@ -138,7 +138,9 @@ class TTS_Info:
         self.list_vits = []  # hidden
         self.list_openai_tts = []  # hidden
         self.list_kokoro = list(KOKORO_VOICES_LIST.keys())
-        self.list_pocket_tts = list(POCKET_TTS_VOICES_LIST.keys())
+        self.list_pocket_tts = sorted(
+            k for k in POCKET_TTS_VOICES_LIST.keys() if k.startswith("en-")
+        )
         self.piper_enabled = False
         self.list_vits_onnx = []  # hidden
         self.xtts_enabled = xtts_enabled
