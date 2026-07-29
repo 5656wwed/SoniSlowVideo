@@ -990,7 +990,6 @@ def segments_kokoro_tts(filtered_kokoro_segments, TRANSLATE_AUDIO_TO):
             pipeline = KPipeline(lang_code=lang_code)
 
         filename = f"audio/{start}.ogg"
-        text = _re.sub(r"\.(\s+[A-Za-z])", r"\1", text)
         text = _re.sub(r"\s+", " ", text).strip()
 
         # Locked pace: default 1.1x only. Never auto-rush higher.
@@ -1007,18 +1006,22 @@ def segments_kokoro_tts(filtered_kokoro_segments, TRANSLATE_AUDIO_TO):
 
         try:
             generator = pipeline(text, voice=voice, speed=speed)
+            audio_chunks = []
             for _, _, audio in generator:
                 audio_trimmed, _ = librosa.effects.trim(audio, top_db=25)
                 if len(audio_trimmed) > 0:
-                    audio = audio_trimmed
+                    audio_chunks.append(audio_trimmed.astype(np.float32))
+                else:
+                    audio_chunks.append(audio.astype(np.float32))
+            if audio_chunks:
+                combined = np.concatenate(audio_chunks)
                 write_chunked(
                     file=filename,
                     samplerate=24000,
-                    data=audio,
+                    data=combined,
                     format="ogg",
                     subtype="vorbis",
                 )
-                break
             verify_saved_file_and_size(filename)
         except Exception as error:
             logger.error(f"Kokoro failed for segment: {error}")
