@@ -1163,6 +1163,29 @@ def audio_segmentation_to_voice(
         # Assign the TTS name
         segment["tts_name"] = speaker_to_voice[segment["speaker"]]
 
+    # Merge consecutive segments that belong to the same sentence
+    # for natural TTS flow (no mid-sentence break)
+    merged = []
+    buf = None
+    for seg in result_diarize["segments"]:
+        if buf is None:
+            buf = dict(seg)
+            continue
+        prev_text = buf["text"].strip()
+        if not re.search(r'[.!?…]\s*$', prev_text):
+            # Previous segment is a sentence fragment — merge
+            buf["text"] = prev_text + " " + seg["text"].strip()
+            buf["end"] = seg.get("end", seg["start"] + 0.5)
+        else:
+            merged.append(buf)
+            buf = dict(seg)
+    if buf is not None:
+        merged.append(buf)
+    n_merged = len(result_diarize["segments"]) - len(merged)
+    if n_merged > 0:
+        logger.info(f"Merged {n_merged} sentence fragments for natural TTS flow")
+    result_diarize["segments"] = merged
+
     # Find TTS method
     pattern_edge = re.compile(r".*-(Male|Female)$")
     pattern_bark = re.compile(r".* BARK$")
