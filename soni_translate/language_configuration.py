@@ -539,9 +539,14 @@ KOKORO_VOICES_LIST = {
 
 # === POCKET TTS ===
 # English-only in v2.x. Uses subprocess (CLI) for compatibility.
+_POCKET_EN_VOICES = [
+    "alba", "anna", "azelma", "bill_boerst", "caro_davy",
+    "charles", "cosette", "eponine", "eve", "fantine",
+    "george", "jane", "jean", "javert", "marius",
+    "mary", "michael", "paul", "peter_yearsley",
+]
 POCKET_TTS_VOICES_LIST = {
-    "en-Pocket-alba Pocket-TTS": "alba",
-    "en-Pocket-anna Pocket-TTS": "anna",
+    f"en-Pocket-{v} Pocket-TTS": v for v in _POCKET_EN_VOICES
 }
 
 LANGUAGE_CODE_IN_THREE_LETTERS = {
