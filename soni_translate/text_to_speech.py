@@ -1013,13 +1013,15 @@ def segments_kokoro_tts(filtered_kokoro_segments, TRANSLATE_AUDIO_TO):
             generator = pipeline(text, voice=voice, speed=speed)
             audio_chunks = []
             for _, _, audio in generator:
-                audio_trimmed, _ = librosa.effects.trim(audio, top_db=25)
-                if len(audio_trimmed) > 0:
-                    audio_chunks.append(audio_trimmed.numpy().astype(np.float32))
-                else:
-                    audio_chunks.append(audio.numpy().astype(np.float32))
+                audio_chunks.append(audio.numpy().astype(np.float32))
             if audio_chunks:
                 combined = np.concatenate(audio_chunks)
+                # Gentle trim on final audio only (preserves inter-sentence breaths)
+                combined_trimmed, _ = librosa.effects.trim(
+                    combined, top_db=25, ref=np.max
+                )
+                if len(combined_trimmed) > 0:
+                    combined = combined_trimmed
                 write_chunked(
                     file=filename,
                     samplerate=24000,
