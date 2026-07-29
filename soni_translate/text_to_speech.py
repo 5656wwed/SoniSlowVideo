@@ -1165,8 +1165,8 @@ def audio_segmentation_to_voice(
 
     # Merge consecutive segments that belong to the same sentence
     # for natural TTS flow (no mid-sentence break).
-    # Caps at ~250 chars per block so audio doesn't drift from video.
-    _MAX_MERGE_CHARS = 250
+    # Only splits on actual sentence-ending punctuation (. ! ? …)
+    # so every TTS segment is a complete thought.
     merged = []
     buf = None
     for seg in result_diarize["segments"]:
@@ -1174,10 +1174,9 @@ def audio_segmentation_to_voice(
             buf = dict(seg)
             continue
         prev_text = buf["text"].strip()
-        next_text = seg["text"].strip()
-        would_be = len(prev_text) + 1 + len(next_text)
-        if not re.search(r'[.!?…]\s*$', prev_text) and would_be <= _MAX_MERGE_CHARS:
-            buf["text"] = prev_text + " " + next_text
+        if not re.search(r'[.!?…]\s*$', prev_text):
+            # Previous segment is a sentence fragment — merge
+            buf["text"] = prev_text + " " + seg["text"].strip()
             buf["end"] = seg.get("end", seg["start"] + 0.5)
         else:
             merged.append(buf)
@@ -1186,7 +1185,7 @@ def audio_segmentation_to_voice(
         merged.append(buf)
     n_merged = len(result_diarize["segments"]) - len(merged)
     if n_merged > 0:
-        logger.info(f"Merged {n_merged} sentence fragments (≤{_MAX_MERGE_CHARS}ch) for natural TTS flow")
+        logger.info(f"Merged {n_merged} sentence fragments for natural TTS flow")
     result_diarize["segments"] = merged
 
     # Find TTS method
