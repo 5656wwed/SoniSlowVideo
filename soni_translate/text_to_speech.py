@@ -149,6 +149,11 @@ def edge_tts_voices_list():
             [f"{v['ShortName']}-{v['Gender']}" for v in tts_voice_list]
         )
 
+    # Only show US English voices (male + female)
+    formatted_voices = sorted(
+        v for v in formatted_voices if v.startswith("en-US-")
+    )
+
     if not formatted_voices:
         logger.error("Can't get EDGE TTS - list voices")
 

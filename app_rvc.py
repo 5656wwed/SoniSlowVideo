@@ -133,7 +133,7 @@ directories = [
 
 class TTS_Info:
     def __init__(self, piper_enabled, xtts_enabled):
-        self.list_edge = []  # hidden
+        self.list_edge = edge_tts_voices_list()  # US English only (filtered inside)
         self.list_bark = []  # hidden
         self.list_vits = []  # hidden
         self.list_openai_tts = []  # hidden
@@ -2659,7 +2659,7 @@ def create_gui(theme, logs_in_gui=False):
                             with gr.Column():
                                 tts_test = gr.Dropdown(
                                     sorted(SoniTr.tts_info.list_edge),
-                                    value="en-GB-ThomasNeural-Male",
+                                    value="en-US-AndrewNeural-Male",
                                     label="TTS",
                                     visible=True,
                                     interactive=True,
