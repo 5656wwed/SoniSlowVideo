@@ -1094,6 +1094,96 @@ def segments_pocket_tts(filtered_pocket_segments, TRANSLATE_AUDIO_TO):
 
 
 # =====================================
+# F5 TTS
+# =====================================
+
+
+def segments_f5_tts(filtered_f5_segments, TRANSLATE_AUDIO_TO):
+    """F5-TTS — clean modern English, zero-shot voice cloning from a sample.
+
+    Uses F5TTS_VOICES_LIST entries "reffile::reftext". 'basic' reffile
+    downloads F5's official English sample. Cloned voices come from
+    ./_F5TTS_/<name>.wav + ./_F5TTS_/<name>.txt.
+    """
+    from .language_configuration import F5TTS_VOICES_LIST
+
+    filtered_segments = sorted(
+        filtered_f5_segments["segments"], key=lambda x: x["tts_name"]
+    )
+
+    tts = None
+    current_key = None
+    ref_audio_cache = {}
+
+    for segment in tqdm(filtered_segments):
+        text = segment["text"]
+        start = segment["start"]
+        tts_name = segment["tts_name"]
+        refspec = F5TTS_VOICES_LIST.get(tts_name, "basic::Some call me nature, others call me mother nature.")
+        reffile, reftext = refspec.split("::", 1)
+
+        filename = f"audio/{start}.ogg"
+
+        # One shared model; reload only when reffile changes.
+        key = reffile
+        if key != current_key:
+            current_key = key
+            if tts is not None:
+                del tts
+                gc.collect()
+                torch.cuda.empty_cache()
+            if key == "basic":
+                if "basic" not in ref_audio_cache:
+                    basic = "basic_ref_en.wav"
+                    if not os.path.isfile(basic):
+                        logger.info("Downloading F5-TTS default English sample...")
+                        run_command(
+                            "curl -sL -o basic_ref_en.wav "
+                            "https://raw.githubusercontent.com/SWivid/F5-TTS/main/"
+                            "src/f5_tts/infer/examples/basic/basic_ref_en.wav"
+                        )
+                    ref_audio_cache["basic"] = basic
+                ref_audio = ref_audio_cache["basic"]
+            else:
+                ref_audio = reffile
+            logger.info(f"Loading F5-TTS with ref={ref_audio}")
+            from f5_tts.api import F5TTS
+
+            device = os.environ.get("SONITR_DEVICE", "cuda")
+            tts = F5TTS(device=device)
+
+        logger.info(f"F5-TTS [{ref_audio}]: {text[:60]}... → {filename}")
+        try:
+            wav, sr, _ = tts.infer(
+                ref_file=ref_audio,
+                ref_text=reftext,
+                gen_text=text,
+                speed=1.0,
+                nfe_step=32,
+                cfg_strength=2.0,
+                target_rms=0.1,
+            )
+            data = wav.astype(np.float32)
+            data = pad_array(data, sr)
+            write_chunked(
+                file=filename,
+                samplerate=sr,
+                data=data,
+                format="ogg",
+                subtype="vorbis",
+            )
+            verify_saved_file_and_size(filename)
+        except Exception as error:
+            logger.error(f"F5-TTS failed: {error}")
+            error_handling_in_tts(error, segment, TRANSLATE_AUDIO_TO, filename)
+
+    if tts is not None:
+        del tts
+    gc.collect()
+    torch.cuda.empty_cache()
+
+
+# =====================================
 # Select task TTS
 # =====================================
 
@@ -1204,6 +1294,7 @@ def audio_segmentation_to_voice(
     pattern_openai_tts = re.compile(r".* OpenAI-TTS$")
     pattern_kokoro = re.compile(r".* Kokoro$")
     pattern_pocket_tts = re.compile(r".* Pocket-TTS$")
+    pattern_f5 = re.compile(r".* F5-TTS$")
     
 
     all_segments = result_diarize["segments"]
@@ -1220,6 +1311,7 @@ def audio_segmentation_to_voice(
     )
     speakers_kokoro = find_spkr(pattern_kokoro, speaker_to_voice, all_segments)
     speakers_pocket_tts = find_spkr(pattern_pocket_tts, speaker_to_voice, all_segments)
+    speakers_f5 = find_spkr(pattern_f5, speaker_to_voice, all_segments)
     
 
     # Filter method in segments
@@ -1231,6 +1323,7 @@ def audio_segmentation_to_voice(
     filtered_openai_tts = filter_by_speaker(speakers_openai_tts, all_segments)
     filtered_kokoro = filter_by_speaker(speakers_kokoro, all_segments)
     filtered_pocket_tts = filter_by_speaker(speakers_pocket_tts, all_segments)
+    filtered_f5 = filter_by_speaker(speakers_f5, all_segments)
     
 
     # Infer
@@ -1267,6 +1360,9 @@ def audio_segmentation_to_voice(
     if filtered_pocket_tts["segments"]:
         logger.info(f"Pocket TTS: {speakers_pocket_tts}")
         segments_pocket_tts(filtered_pocket_tts, TRANSLATE_AUDIO_TO)
+    if filtered_f5["segments"]:
+        logger.info(f"F5 TTS: {speakers_f5}")
+        segments_f5_tts(filtered_f5, TRANSLATE_AUDIO_TO)
 
 
     [result.pop("tts_name", None) for result in result_diarize["segments"]]
