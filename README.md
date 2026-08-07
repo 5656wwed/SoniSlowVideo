@@ -16,9 +16,12 @@ https://colab.research.google.com/github/5656wwed/SoniSlowVideo/blob/main/SoniSl
 
 - Adds a **F5-TTS** engine: clean modern English, zero-shot **voice cloning**.
 - Pick `en-F5-Default F5-TTS` for a good default voice (no sample needed).
-- To **clone**: put your sample + its exact text into the repo's `_F5TTS_/` folder:
-  - `_F5TTS_/myvoice.wav` (or .mp3) + `_F5TTS_/myvoice.txt` (the exact words it says)
-  - Restart → a new `en-F5-myvoice F5-TTS` voice appears in the TTS list.
+- To **clone**: upload your sample **once** through the Colab UI (Step 1.5). It's
+  saved to **Google Drive** (`MyDrive/SoniSlow_F5_Voices/`) and automatically
+  reloaded on every future run — no re-uploading, no editing files.
+  - The sample needs a `.wav`/`.mp3` plus the **exact text** it says (you type
+    it once when uploading).
+  - Your clone appears in the TTS list as `en-F5-<name> F5-TTS`.
 
 ## Behavior
 
