@@ -6,7 +6,19 @@ Fork of [5656wwed/SoniTranslate](https://github.com/5656wwed/SoniTranslate) with
 
 ## Colab (different link)
 
+F5-TTS branch (clean modern English + voice cloning):
+https://colab.research.google.com/github/5656wwed/SoniSlowVideo/blob/f5-tts/SoniSlowVideo_Colab.ipynb
+
+Main (stable) branch:
 https://colab.research.google.com/github/5656wwed/SoniSlowVideo/blob/main/SoniSlowVideo_Colab.ipynb
+
+## F5-TTS engine (f5-tts branch)
+
+- Adds a **F5-TTS** engine: clean modern English, zero-shot **voice cloning**.
+- Pick `en-F5-Default F5-TTS` for a good default voice (no sample needed).
+- To **clone**: put your sample + its exact text into the repo's `_F5TTS_/` folder:
+  - `_F5TTS_/myvoice.wav` (or .mp3) + `_F5TTS_/myvoice.txt` (the exact words it says)
+  - Restart → a new `en-F5-myvoice F5-TTS` voice appears in the TTS list.
 
 ## Behavior
 
