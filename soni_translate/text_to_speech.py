@@ -1104,6 +1104,14 @@ def segments_pocket_tts(filtered_pocket_segments, TRANSLATE_AUDIO_TO):
 
 _ref_prep_cache = {}
 
+def _shorten_ref_text(text):
+    """F5-TTS wants a SHORT reference sentence. A long ref_text makes the
+    model re-speak the reference into each line. Keep ~1 sentence."""
+    text = re.split(r"(?<=[.!?])\s+", text.strip())[0].strip()
+    if len(text) > 110:
+        text = text[:110].rsplit(" ", 1)[0]
+    return text
+
 def _transcribe_ref(audio_path):
     """ASR the reference audio to get a correct ref_text (fixes F5-TTS
     duration crashes caused by a wrong/short ref_text)."""
@@ -1119,6 +1127,7 @@ def _transcribe_ref(audio_path):
             seg.get("text", "").strip() for seg in result.get("segments", [])
         ).strip()
         if text:
+            text = _shorten_ref_text(text)
             logger.info(f"F5-TTS [auto] transcribed ref audio ({len(text)} chars)")
             return text
     except Exception as error:
@@ -1133,7 +1142,7 @@ def _prepare_ref_audio_and_text(reffile, reftext):
         return _ref_prep_cache[reffile]
 
     import soundfile as sf
-    max_sec = float(os.environ.get("F5TTS_REF_MAX_SEC", "12"))
+    max_sec = float(os.environ.get("F5TTS_REF_MAX_SEC", "10"))
     trimmed = reffile
     try:
         info = sf.info(reffile)
@@ -1158,6 +1167,9 @@ def _prepare_ref_audio_and_text(reffile, reftext):
         new_text = _transcribe_ref(trimmed)
         if new_text:
             reftext = new_text
+
+    if reftext:
+        reftext = _shorten_ref_text(reftext)
 
     _ref_prep_cache[reffile] = (trimmed, reftext)
     return trimmed, reftext
