@@ -1098,6 +1098,69 @@ def segments_pocket_tts(filtered_pocket_segments, TRANSLATE_AUDIO_TO):
 # =====================================
 
 
+# =====================================
+# F5-TTS clone reference auto-fix
+# =====================================
+
+_ref_prep_cache = {}
+
+def _transcribe_ref(audio_path):
+    """ASR the reference audio to get a correct ref_text (fixes F5-TTS
+    duration crashes caused by a wrong/short ref_text)."""
+    from .speech_segmentation import transcribe_speech
+    device = os.environ.get("SONITR_DEVICE", "cuda")
+    asr = os.environ.get("F5TTS_ASR_MODEL", "base.en")
+    compute = "float16" if device == "cuda" else "int8"
+    try:
+        _, result = transcribe_speech(
+            audio_path, asr, compute, 8, "en", literalize_numbers=False
+        )
+        text = " ".join(
+            seg.get("text", "").strip() for seg in result.get("segments", [])
+        ).strip()
+        if text:
+            logger.info(f"F5-TTS [auto] transcribed ref audio ({len(text)} chars)")
+            return text
+    except Exception as error:
+        logger.warning(f"F5-TTS [auto] ref transcription failed: {error}")
+    return None
+
+
+def _prepare_ref_audio_and_text(reffile, reftext):
+    """Trim ref audio to a safe length and auto-transcribe ref_text when
+    it's missing or broken. Cached per ref file. Returns (audio, text)."""
+    if reffile in _ref_prep_cache:
+        return _ref_prep_cache[reffile]
+
+    import soundfile as sf
+    max_sec = float(os.environ.get("F5TTS_REF_MAX_SEC", "12"))
+    trimmed = reffile
+    try:
+        info = sf.info(reffile)
+        dur = info.frames / info.samplerate
+    except Exception:
+        dur = 0
+
+    if dur > max_sec:
+        trimmed = os.path.splitext(reffile)[0] + "_trim.wav"
+        if not os.path.isfile(trimmed):
+            run_command(
+                f'ffmpeg -y -loglevel error -i "{reffile}" '
+                f'-t {max_sec} -ar 24000 -ac 1 "{trimmed}"'
+            )
+        logger.info(
+            f"F5-TTS [auto] ref audio {dur:.1f}s -> trimmed to {max_sec}s"
+        )
+
+    if reftext is None or len(reftext.strip()) < 15:
+        new_text = _transcribe_ref(trimmed)
+        if new_text:
+            reftext = new_text
+
+    _ref_prep_cache[reffile] = (trimmed, reftext)
+    return trimmed, reftext
+
+
 def _enable_f5_max_chars_floor():
     """Force a minimum F5-TTS chunk size so a short/empty ref_text can't
     produce many tiny chunks (slow + poor GPU use). Tunable via env
@@ -1141,6 +1204,8 @@ def segments_f5_tts(filtered_f5_segments, TRANSLATE_AUDIO_TO):
         tts_name = segment["tts_name"]
         refspec = F5TTS_VOICES_LIST.get(tts_name, "basic::Some call me nature, others call me mother nature.")
         reffile, reftext = refspec.split("::", 1)
+        if reffile != "basic":
+            reffile, reftext = _prepare_ref_audio_and_text(reffile, reftext)
 
         filename = f"audio/{start}.ogg"
 
