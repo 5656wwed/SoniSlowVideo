@@ -1098,6 +1098,24 @@ def segments_pocket_tts(filtered_pocket_segments, TRANSLATE_AUDIO_TO):
 # =====================================
 
 
+def _enable_f5_max_chars_floor():
+    """Force a minimum F5-TTS chunk size so a short/empty ref_text can't
+    produce many tiny chunks (slow + poor GPU use). Tunable via env
+    F5TTS_MAX_CHARS (default 200). Set to 0 to disable."""
+    try:
+        import f5_tts.infer.utils_infer as ui
+    except Exception:
+        return
+    floor = int(os.environ.get("F5TTS_MAX_CHARS", "200"))
+    if floor <= 0 or getattr(ui, "_max_chars_floor_patched", False):
+        return
+    orig = ui.chunk_text
+    def patched(text, max_chars=135, **kw):
+        return orig(text, max(max_chars, int(os.environ.get("F5TTS_MAX_CHARS", "200"))), **kw)
+    ui.chunk_text = patched
+    ui._max_chars_floor_patched = True
+    logger.info(f"F5-TTS max_chars floor set to {floor}")
+
 def segments_f5_tts(filtered_f5_segments, TRANSLATE_AUDIO_TO):
     """F5-TTS — clean modern English, zero-shot voice cloning from a sample.
 
@@ -1106,6 +1124,8 @@ def segments_f5_tts(filtered_f5_segments, TRANSLATE_AUDIO_TO):
     ./_F5TTS_/<name>.wav + ./_F5TTS_/<name>.txt.
     """
     from .language_configuration import F5TTS_VOICES_LIST
+
+    _enable_f5_max_chars_floor()
 
     filtered_segments = sorted(
         filtered_f5_segments["segments"], key=lambda x: x["tts_name"]
