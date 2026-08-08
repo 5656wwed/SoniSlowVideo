@@ -1154,12 +1154,13 @@ def segments_f5_tts(filtered_f5_segments, TRANSLATE_AUDIO_TO):
 
         logger.info(f"F5-TTS [{ref_audio}]: {text[:60]}... → {filename}")
         try:
+            nfe_step = int(os.environ.get("F5TTS_NFE_STEP", "16"))
             wav, sr, _ = tts.infer(
                 ref_file=ref_audio,
                 ref_text=reftext,
                 gen_text=text,
                 speed=1.0,
-                nfe_step=32,
+                nfe_step=nfe_step,
                 cfg_strength=2.0,
                 target_rms=0.1,
             )
