@@ -1144,12 +1144,14 @@ def _prepare_ref_audio_and_text(reffile, reftext):
     if dur > max_sec:
         trimmed = os.path.splitext(reffile)[0] + "_trim.wav"
         if not os.path.isfile(trimmed):
+            start = max(0, dur / 2 - max_sec / 2)
             run_command(
-                f'ffmpeg -y -loglevel error -i "{reffile}" '
-                f'-t {max_sec} -ar 24000 -ac 1 "{trimmed}"'
+                f'ffmpeg -y -loglevel error -ss {start:.2f} '
+                f'-i "{reffile}" -t {max_sec} -ar 24000 -ac 1 "{trimmed}"'
             )
         logger.info(
-            f"F5-TTS [auto] ref audio {dur:.1f}s -> trimmed to {max_sec}s"
+            f"F5-TTS [auto] ref audio {dur:.1f}s -> took middle {max_sec}s "
+            f"(from {max(0, dur/2 - max_sec/2):.1f}s)"
         )
 
     if reftext is None or len(reftext.strip()) < 15:
