@@ -1105,11 +1105,13 @@ def segments_pocket_tts(filtered_pocket_segments, TRANSLATE_AUDIO_TO):
 _ref_prep_cache = {}
 
 def _shorten_ref_text(text):
-    """F5-TTS wants a SHORT reference sentence. A long ref_text makes the
-    model re-speak the reference into each line. Keep ~1 sentence."""
-    text = re.split(r"(?<=[.!?])\s+", text.strip())[0].strip()
-    if len(text) > 110:
-        text = text[:110].rsplit(" ", 1)[0]
+    """F5-TTS wants a normal-length reference sentence (~1-2 sentences).
+    Too long (200+ chars) -> model re-speaks it. Too short (<25 chars) ->
+    duration estimate explodes past the 8192-frame cap and it crashes.
+    Aim for ~60-90 chars (a solid sentence)."""
+    text = text.strip()
+    if len(text) > 90:
+        text = text[:90].rsplit(" ", 1)[0]
     return text
 
 def _transcribe_ref(audio_path):
@@ -1151,7 +1153,7 @@ def _prepare_ref_audio_and_text(reffile, reftext):
         dur = 0
 
     if dur > max_sec:
-        trimmed = os.path.splitext(reffile)[0] + "_trim.wav"
+        trimmed = os.path.splitext(reffile)[0] + f"_trim{int(max_sec)}s.wav"
         if not os.path.isfile(trimmed):
             start = max(0, dur / 2 - max_sec / 2)
             run_command(
@@ -1183,12 +1185,15 @@ def _enable_f5_max_chars_floor():
         import f5_tts.infer.utils_infer as ui
     except Exception:
         return
-    floor = int(os.environ.get("F5TTS_MAX_CHARS", "200"))
+    floor = int(os.environ.get("F5TTS_MAX_CHARS", "150"))
     if floor <= 0 or getattr(ui, "_max_chars_floor_patched", False):
         return
     orig = ui.chunk_text
     def patched(text, max_chars=135, **kw):
-        return orig(text, max(max_chars, int(os.environ.get("F5TTS_MAX_CHARS", "200"))), **kw)
+        floor = int(os.environ.get("F5TTS_MAX_CHARS", "150"))
+        eff = max(max_chars, floor)
+        eff = min(eff, 180)  # ceiling: overlong chunks can crash (8192 cap)
+        return orig(text, eff, **kw)
     ui.chunk_text = patched
     ui._max_chars_floor_patched = True
     logger.info(f"F5-TTS max_chars floor set to {floor}")
