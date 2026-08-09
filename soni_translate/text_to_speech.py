@@ -1081,7 +1081,7 @@ def _pocket_normalize_voice(voice):
 
 
 def segments_pocket_tts(filtered_pocket_segments, TRANSLATE_AUDIO_TO):
-    """Pocket TTS — CPU-only, English, uses CLI (v2.x compatible)."""
+    """Pocket TTS — English, uses CLI (v2.x compatible). Uses GPU if available."""
     from .language_configuration import POCKET_TTS_VOICES_LIST
     import shutil
 
@@ -1089,6 +1089,13 @@ def segments_pocket_tts(filtered_pocket_segments, TRANSLATE_AUDIO_TO):
     if not pocket_bin:
         venv = os.path.join(os.path.dirname(sys.executable), "pocket-tts")
         pocket_bin = venv if os.path.exists(venv) else "pocket-tts"
+
+    # Use GPU if available, else CPU. On Colab T4 this gives a big speedup.
+    device = "cuda" if torch.cuda.is_available() else "cpu"
+    if device == "cuda":
+        logger.info(f"Pocket TTS using GPU: {torch.cuda.get_device_name(0)}")
+    else:
+        logger.info("Pocket TTS using CPU (no CUDA detected)")
 
     logger.info(f"Pocket TTS binary: {pocket_bin}")
 
@@ -1114,7 +1121,7 @@ def segments_pocket_tts(filtered_pocket_segments, TRANSLATE_AUDIO_TO):
                     result = subprocess.run(
                         [pocket_bin, "generate", "--text", text,
                          "--voice", voice, "--output-path", filename,
-                         "--device", "cpu", "--quiet"],
+                         "--device", device, "--quiet"],
                         capture_output=True, text=True, timeout=180
                     )
                     if result.returncode != 0:
