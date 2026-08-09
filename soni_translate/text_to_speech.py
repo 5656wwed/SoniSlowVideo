@@ -1122,8 +1122,9 @@ def segments_pocket_tts(filtered_pocket_segments, TRANSLATE_AUDIO_TO):
                         [pocket_bin, "generate", "--text", text,
                          "--voice", voice, "--output-path", filename,
                          "--device", device, "--quiet",
-                         "--temperature", "0.6",
-                         "--lsd-decode-steps", "2",
+                         "--temperature", "0.3",
+                         "--max-tokens", "80",
+                         "--eos-threshold", "-2.0",
                          "--noise-clamp", "0.3"],
                         capture_output=True, text=True, timeout=180
                     )
