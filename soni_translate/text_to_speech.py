@@ -1050,6 +1050,36 @@ def segments_kokoro_tts(filtered_kokoro_segments, TRANSLATE_AUDIO_TO):
 # =====================================
 
 
+_pocket_voice_cache = {}
+
+
+def _pocket_normalize_voice(voice):
+    """If `voice` is a file path (a clone sample), normalize it to a clean
+    24kHz mono PCM WAV first. Pocket reads .wav with the built-in `wave`
+    module (PCM only) — Telegram voice notes are often OGG/Opus misnamed as
+    .wav and would crash audio_read. Preset names pass through untouched."""
+    is_path = (
+        os.sep in str(voice)
+        or str(voice).lower().endswith((".wav", ".mp3", ".ogg", ".m4a", ".flac"))
+    )
+    if not is_path or not os.path.exists(str(voice)):
+        return voice
+    if voice in _pocket_voice_cache:
+        return _pocket_voice_cache[voice]
+
+    norm = os.path.join("_POCKET_", "_norm_" + os.path.splitext(os.path.basename(str(voice)))[0] + ".wav")
+    try:
+        run_command(
+            f'ffmpeg -y -loglevel error -i "{voice}" -ar 24000 -ac 1 -c:a pcm_s16le "{norm}"'
+        )
+        logger.info(f"Pocket TTS [normalize] {voice} -> {norm}")
+    except Exception as error:
+        logger.warning(f"Pocket TTS normalize failed, using original: {error}")
+        return voice
+    _pocket_voice_cache[voice] = norm
+    return norm
+
+
 def segments_pocket_tts(filtered_pocket_segments, TRANSLATE_AUDIO_TO):
     """Pocket TTS — CPU-only, English, uses CLI (v2.x compatible)."""
     from .language_configuration import POCKET_TTS_VOICES_LIST
@@ -1070,6 +1100,7 @@ def segments_pocket_tts(filtered_pocket_segments, TRANSLATE_AUDIO_TO):
         start = segment["start"]
         tts_name = segment["tts_name"]
         voice = POCKET_TTS_VOICES_LIST.get(tts_name, "alba")
+        voice = _pocket_normalize_voice(voice)
         filename = f"audio/{start}.ogg"
 
         logger.info(f"Pocket TTS [{voice}]: {text[:60]}... → {filename}")
