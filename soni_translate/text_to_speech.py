@@ -1113,8 +1113,15 @@ def segments_pocket_tts(filtered_pocket_segments, TRANSLATE_AUDIO_TO):
                 capture_output=True, text=True, timeout=120
             )
             if result.returncode != 0:
+                # Dump full stderr to a file so we can see the real cause
+                errfile = os.path.join("audio", "_pocket_err.log")
+                try:
+                    with open(errfile, "w") as f:
+                        f.write("STDOUT:\n%s\n\nSTDERR:\n%s\n" % (result.stdout, result.stderr))
+                except Exception:
+                    pass
                 raise TTS_OperationError(
-                    f"exit {result.returncode}: {result.stderr[:200]}"
+                    f"exit {result.returncode}: {result.stderr[-1500:]}"
                 )
             verify_saved_file_and_size(filename)
         except Exception as error:
