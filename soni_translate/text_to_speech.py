@@ -1081,8 +1081,15 @@ def _pocket_normalize_voice(voice):
 
 
 def segments_pocket_tts(filtered_pocket_segments, TRANSLATE_AUDIO_TO):
-    """Pocket TTS — English, uses CLI (v2.x compatible). Uses GPU if available."""
+    """Pocket TTS — load model ONCE via `serve`, reuse for every segment.
+
+    Re-launching the CLI per segment causes the model to degrade and fill
+    audio with garbage (rumble/mush). The `serve` server holds the model in
+    memory (GPU if available) and reuses it — this matches how the Telegram
+    Pocket bot runs and is far more stable.
+    """
     from .language_configuration import POCKET_TTS_VOICES_LIST
+    import requests as _requests
     import shutil
 
     pocket_bin = shutil.which("pocket-tts")
@@ -1090,7 +1097,6 @@ def segments_pocket_tts(filtered_pocket_segments, TRANSLATE_AUDIO_TO):
         venv = os.path.join(os.path.dirname(sys.executable), "pocket-tts")
         pocket_bin = venv if os.path.exists(venv) else "pocket-tts"
 
-    # Use GPU if available, else CPU. On Colab T4 this gives a big speedup.
     device = "cuda" if torch.cuda.is_available() else "cpu"
     if device == "cuda":
         logger.info(f"Pocket TTS using GPU: {torch.cuda.get_device_name(0)}")
@@ -1099,74 +1105,113 @@ def segments_pocket_tts(filtered_pocket_segments, TRANSLATE_AUDIO_TO):
 
     logger.info(f"Pocket TTS binary: {pocket_bin}")
 
-    for segment in tqdm(sorted(
-        filtered_pocket_segments["segments"],
-        key=lambda x: x["tts_name"]
-    )):
-        text = segment["text"]
-        start = segment["start"]
-        tts_name = segment["tts_name"]
-        voice = POCKET_TTS_VOICES_LIST.get(tts_name, "alba")
-        voice = _pocket_normalize_voice(voice)
-        filename = f"audio/{start}.ogg"
+    # Start the serve server ONCE (loads model into memory, reused per segment)
+    port = 17980
+    server_proc = None
+    try:
+        server_proc = subprocess.Popen(
+            [pocket_bin, "serve", "--host", "127.0.0.1", "--port", str(port)],
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+        )
+        base = f"http://127.0.0.1:{port}"
+        # Wait for /health to be ready (model load can take a while on first run)
+        ready = False
+        for _ in range(240):  # up to ~4 min
+            if server_proc.poll() is not None:
+                logger.error("Pocket serve exited early")
+                break
+            try:
+                r = _requests.get(base + "/health", timeout=2)
+                if r.status_code == 200:
+                    ready = True
+                    break
+            except Exception:
+                pass
+            time.sleep(1)
+        if not ready:
+            raise TTS_OperationError(
+                "Pocket TTS server did not become ready. See _pocket_err.log."
+            )
+        logger.info(f"Pocket TTS server ready on {base}")
+    except Exception as error:
+        logger.error(f"Pocket TTS server start failed: {error}")
+        if server_proc is not None:
+            server_proc.kill()
+        error_handling_in_tts(error, {}, TRANSLATE_AUDIO_TO, "audio/0.00.ogg")
+        return
 
-        logger.info(f"Pocket TTS [{voice}]: {text[:60]}... → {filename}")
+    try:
+        for segment in tqdm(sorted(
+            filtered_pocket_segments["segments"],
+            key=lambda x: x["tts_name"]
+        )):
+            text = segment["text"]
+            start = segment["start"]
+            tts_name = segment["tts_name"]
+            voice = POCKET_TTS_VOICES_LIST.get(tts_name, "alba")
+            voice = _pocket_normalize_voice(voice)
+            filename = f"audio/{start}.ogg"
 
-        try:
-            max_attempts = 3
-            last_err = None
-            ok = False
-            for attempt in range(1, max_attempts + 1):
-                try:
-                    result = subprocess.run(
-                        [pocket_bin, "generate", "--text", text,
-                         "--voice", voice, "--output-path", filename,
-                         "--device", device, "--quiet",
-                         "--temperature", "0.6",
-                         "--lsd-decode-steps", "2",
-                         "--noise-clamp", "0.3"],
-                        capture_output=True, text=True, timeout=180
-                    )
-                    if result.returncode != 0:
-                        # Dump full stderr to a file so we can see the real cause
-                        errfile = os.path.join("audio", "_pocket_err.log")
-                        try:
-                            with open(errfile, "w") as f:
-                                f.write("STDOUT:\n%s\n\nSTDERR:\n%s\n" % (result.stdout, result.stderr))
-                        except Exception:
-                            pass
-                        last_err = f"exit {result.returncode}: {result.stderr[-1500:]}"
+            logger.info(f"Pocket TTS [{voice}]: {text[:60]}... → {filename}")
+
+            try:
+                max_attempts = 3
+                last_err = None
+                ok = False
+                for attempt in range(1, max_attempts + 1):
+                    try:
+                        # Send text + clone sample to the running server
+                        with open(voice, "rb") as vf:
+                            resp = _requests.post(
+                                base + "/tts",
+                                data={"text": text},
+                                files={"voice_wav": ("voice.wav", vf, "audio/wav")},
+                                timeout=240,
+                            )
+                        if resp.status_code != 200:
+                            last_err = f"HTTP {resp.status_code}: {resp.text[:300]}"
+                            if attempt < max_attempts:
+                                logger.warning(
+                                    f"Pocket TTS attempt {attempt} failed ({last_err}); retrying..."
+                                )
+                                time.sleep(3)
+                                continue
+                            raise TTS_OperationError(last_err)
+
+                        # Save returned WAV bytes, then convert to ogg
+                        tmp_wav = filename[:-4] + ".pkt.wav"
+                        with open(tmp_wav, "wb") as f:
+                            f.write(resp.content)
+                        os.system(
+                            f'ffmpeg -y -loglevel panic -i "{tmp_wav}" '
+                            f'-c:a libvorbis -q:a 4 "{filename}"'
+                        )
+                        if os.path.exists(tmp_wav):
+                            os.remove(tmp_wav)
+                        verify_saved_file_and_size(filename)
+                        ok = True
+                        break
+                    except Exception as error:
+                        last_err = str(error)
                         if attempt < max_attempts:
                             logger.warning(
-                                f"Pocket TTS attempt {attempt} failed ({last_err}); retrying..."
+                                f"Pocket TTS attempt {attempt} failed; retrying..."
                             )
                             time.sleep(3)
                             continue
-                        raise TTS_OperationError(last_err)
-                    ok = True
-                    break
-                except subprocess.TimeoutExpired:
-                    last_err = "timeout"
-                    if attempt < max_attempts:
-                        logger.warning(f"Pocket TTS attempt {attempt} timed out; retrying...")
-                        time.sleep(3)
-                        continue
-                    raise
-                except Exception as error:
-                    last_err = str(error)
-                    if attempt < max_attempts:
-                        logger.warning(f"Pocket TTS attempt {attempt} failed; retrying...")
-                        time.sleep(3)
-                        continue
-                    raise
-            if not ok:
-                raise TTS_OperationError(last_err)
-            verify_saved_file_and_size(filename)
-        except Exception as error:
-            logger.error(f"Pocket TTS failed: {error}")
-            error_handling_in_tts(error, segment, TRANSLATE_AUDIO_TO, filename)
+                        raise
+                if not ok:
+                    raise TTS_OperationError(last_err)
+            except Exception as error:
+                logger.error(f"Pocket TTS failed: {error}")
+                error_handling_in_tts(error, segment, TRANSLATE_AUDIO_TO, filename)
+    finally:
+        if server_proc is not None:
+            server_proc.kill()
 
     gc.collect()
+    torch.cuda.empty_cache()
 
 
 
