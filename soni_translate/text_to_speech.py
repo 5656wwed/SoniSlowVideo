@@ -1106,23 +1106,51 @@ def segments_pocket_tts(filtered_pocket_segments, TRANSLATE_AUDIO_TO):
         logger.info(f"Pocket TTS [{voice}]: {text[:60]}... → {filename}")
 
         try:
-            result = subprocess.run(
-                [pocket_bin, "generate", "--text", text,
-                 "--voice", voice, "--output-path", filename,
-                 "--device", "cpu", "--quiet"],
-                capture_output=True, text=True, timeout=120
-            )
-            if result.returncode != 0:
-                # Dump full stderr to a file so we can see the real cause
-                errfile = os.path.join("audio", "_pocket_err.log")
+            max_attempts = 3
+            last_err = None
+            ok = False
+            for attempt in range(1, max_attempts + 1):
                 try:
-                    with open(errfile, "w") as f:
-                        f.write("STDOUT:\n%s\n\nSTDERR:\n%s\n" % (result.stdout, result.stderr))
-                except Exception:
-                    pass
-                raise TTS_OperationError(
-                    f"exit {result.returncode}: {result.stderr[-1500:]}"
-                )
+                    result = subprocess.run(
+                        [pocket_bin, "generate", "--text", text,
+                         "--voice", voice, "--output-path", filename,
+                         "--device", "cpu", "--quiet"],
+                        capture_output=True, text=True, timeout=180
+                    )
+                    if result.returncode != 0:
+                        # Dump full stderr to a file so we can see the real cause
+                        errfile = os.path.join("audio", "_pocket_err.log")
+                        try:
+                            with open(errfile, "w") as f:
+                                f.write("STDOUT:\n%s\n\nSTDERR:\n%s\n" % (result.stdout, result.stderr))
+                        except Exception:
+                            pass
+                        last_err = f"exit {result.returncode}: {result.stderr[-1500:]}"
+                        if attempt < max_attempts:
+                            logger.warning(
+                                f"Pocket TTS attempt {attempt} failed ({last_err}); retrying..."
+                            )
+                            time.sleep(3)
+                            continue
+                        raise TTS_OperationError(last_err)
+                    ok = True
+                    break
+                except subprocess.TimeoutExpired:
+                    last_err = "timeout"
+                    if attempt < max_attempts:
+                        logger.warning(f"Pocket TTS attempt {attempt} timed out; retrying...")
+                        time.sleep(3)
+                        continue
+                    raise
+                except Exception as error:
+                    last_err = str(error)
+                    if attempt < max_attempts:
+                        logger.warning(f"Pocket TTS attempt {attempt} failed; retrying...")
+                        time.sleep(3)
+                        continue
+                    raise
+            if not ok:
+                raise TTS_OperationError(last_err)
             verify_saved_file_and_size(filename)
         except Exception as error:
             logger.error(f"Pocket TTS failed: {error}")
