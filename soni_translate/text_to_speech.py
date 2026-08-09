@@ -1487,7 +1487,9 @@ def accelerate_segments(
         if acc_percentage == 1.0 and info_enc == "OGG":
             copy_files(filename, f"{folder_output}{os.sep}audio")
         else:
-            acc_percentage = max(1.03, min(float(acc_percentage), 1.35))
+            # Fill the slot: speed up long audio (up to 1.35) OR slow down short
+            # audio (down to 0.75) so it matches the video like Edge does.
+            acc_percentage = max(0.75, min(float(acc_percentage), 1.35))
             atempo = _atempo_filter_chain(acc_percentage)
             os.system(
                 f"ffmpeg -y -loglevel panic -i {filename} "
@@ -1521,6 +1523,30 @@ def accelerate_segments(
                             )
                         elif os.path.isfile(tmp_force):
                             os.remove(tmp_force)
+                # Slow-fill pass: if the audio is still SHORTER than the slot,
+                # stretch it down to fill the visual (atempo < 1). Capped so it
+                # doesn't sound unnaturally slow.
+                elif duration_create < duration_true * 0.95 and duration_true > 0.2:
+                    fill_rate = max(
+                        duration_create / duration_true, 0.75
+                    )
+                    if fill_rate < 0.97:
+                        tmp_fill = out_file + ".fill.ogg"
+                        atempo = _atempo_filter_chain(fill_rate)
+                        rc = os.system(
+                            f"ffmpeg -y -loglevel panic -i {out_file} "
+                            f"-filter:a {atempo} {tmp_fill}"
+                        )
+                        if rc == 0 and os.path.isfile(tmp_fill):
+                            os.replace(tmp_fill, out_file)
+                            logger.info(
+                                f"Slow-fill {filename}: "
+                                f"{duration_create:.2f}s → "
+                                f"slot {duration_true:.2f}s "
+                                f"(x{fill_rate:.2f})"
+                            )
+                        elif os.path.isfile(tmp_fill):
+                            os.remove(tmp_fill)
             except Exception as error:
                 logger.error(f"Force-fit failed for {filename}: {error}")
 
