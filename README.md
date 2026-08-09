@@ -6,22 +6,23 @@ Fork of [5656wwed/SoniTranslate](https://github.com/5656wwed/SoniTranslate) with
 
 ## Colab (different link)
 
-F5-TTS branch (clean modern English + voice cloning):
-https://colab.research.google.com/github/5656wwed/SoniSlowVideo/blob/f5-tts/SoniSlowVideo_Colab.ipynb
+dots.tts branch (voice cloning + clean natural voice):
+https://colab.research.google.com/github/5656wwed/SoniSlowVideo/blob/dots-tts/SoniSlowVideo_Colab.ipynb
 
 Main (stable) branch:
 https://colab.research.google.com/github/5656wwed/SoniSlowVideo/blob/main/SoniSlowVideo_Colab.ipynb
 
-## F5-TTS engine (f5-tts branch)
+## dots.tts engine (dots-tts branch)
 
-- Adds a **F5-TTS** engine: clean modern English, zero-shot **voice cloning**.
-- Pick `en-F5-Default F5-TTS` for a good default voice (no sample needed).
+- Adds a **dots.tts** engine: fully continuous 2B autoregressive TTS (Apache-2.0,
+  public HF checkpoints — free, no API key) with zero-shot **voice cloning**.
 - To **clone**: upload your sample **once** through the Colab UI (Step 1.5). It's
-  saved to **Google Drive** (`MyDrive/SoniSlow_F5_Voices/`) and automatically
+  saved to **Google Drive** (`MyDrive/SoniSlow_Dots_Voices/`) and automatically
   reloaded on every future run — no re-uploading, no editing files.
   - The sample needs a `.wav`/`.mp3` plus the **exact text** it says (you type
     it once when uploading).
-  - Your clone appears in the TTS list as `en-F5-<name> F5-TTS`.
+  - Your clone appears in the TTS list as `en-Dots-<name> Dots-TTS`.
+- Requires `torch>=2.8.0` (the notebook installs it).
 
 ## Behavior
 

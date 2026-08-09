@@ -1094,57 +1094,19 @@ def segments_pocket_tts(filtered_pocket_segments, TRANSLATE_AUDIO_TO):
 
 
 # =====================================
-# F5 TTS
+# dots.tts
 # =====================================
 
+_dots_runtime = None
+_dots_ref_cache = {}
 
-# =====================================
-# F5-TTS clone reference auto-fix
-# =====================================
+def _dots_prepare_ref(reffile, reftext):
+    """Trim ref audio to ~10s and auto-transcribe ref_text when missing/broken
+    (dots.tts wants a transcript that matches the reference audio). Cached."""
+    if reffile in _dots_ref_cache:
+        return _dots_ref_cache[reffile]
 
-_ref_prep_cache = {}
-
-def _shorten_ref_text(text):
-    """F5-TTS wants a normal-length reference sentence (~1-2 sentences).
-    Too long (200+ chars) -> model re-speaks it. Too short (<25 chars) ->
-    duration estimate explodes past the 8192-frame cap and it crashes.
-    Aim for ~60-90 chars (a solid sentence)."""
-    text = text.strip()
-    if len(text) > 90:
-        text = text[:90].rsplit(" ", 1)[0]
-    return text
-
-def _transcribe_ref(audio_path):
-    """ASR the reference audio to get a correct ref_text (fixes F5-TTS
-    duration crashes caused by a wrong/short ref_text)."""
-    from .speech_segmentation import transcribe_speech
-    device = os.environ.get("SONITR_DEVICE", "cuda")
-    asr = os.environ.get("F5TTS_ASR_MODEL", "base.en")
-    compute = "float16" if device == "cuda" else "int8"
-    try:
-        _, result = transcribe_speech(
-            audio_path, asr, compute, 8, "en", literalize_numbers=False
-        )
-        text = " ".join(
-            seg.get("text", "").strip() for seg in result.get("segments", [])
-        ).strip()
-        if text:
-            text = _shorten_ref_text(text)
-            logger.info(f"F5-TTS [auto] transcribed ref audio ({len(text)} chars)")
-            return text
-    except Exception as error:
-        logger.warning(f"F5-TTS [auto] ref transcription failed: {error}")
-    return None
-
-
-def _prepare_ref_audio_and_text(reffile, reftext):
-    """Trim ref audio to a safe length and auto-transcribe ref_text when
-    it's missing or broken. Cached per ref file. Returns (audio, text)."""
-    if reffile in _ref_prep_cache:
-        return _ref_prep_cache[reffile]
-
-    import soundfile as sf
-    max_sec = float(os.environ.get("F5TTS_REF_MAX_SEC", "10"))
+    max_sec = float(os.environ.get("DOTS_REF_MAX_SEC", "10"))
     trimmed = reffile
     try:
         info = sf.info(reffile)
@@ -1158,118 +1120,93 @@ def _prepare_ref_audio_and_text(reffile, reftext):
             start = max(0, dur / 2 - max_sec / 2)
             run_command(
                 f'ffmpeg -y -loglevel error -ss {start:.2f} '
-                f'-i "{reffile}" -t {max_sec} -ar 24000 -ac 1 "{trimmed}"'
+                f'-i "{reffile}" -t {max_sec} -ar 48000 -ac 1 "{trimmed}"'
             )
         logger.info(
-            f"F5-TTS [auto] ref audio {dur:.1f}s -> took middle {max_sec}s "
-            f"(from {max(0, dur/2 - max_sec/2):.1f}s)"
+            f"dots.tts [auto] ref audio {dur:.1f}s -> took middle {max_sec}s"
         )
 
     if reftext is None or len(reftext.strip()) < 15:
-        new_text = _transcribe_ref(trimmed)
-        if new_text:
-            reftext = new_text
+        from .speech_segmentation import transcribe_speech
+        device = os.environ.get("SONITR_DEVICE", "cuda")
+        asr = os.environ.get("DOTS_ASR_MODEL", "base.en")
+        compute = "float16" if device == "cuda" else "int8"
+        try:
+            _, result = transcribe_speech(
+                trimmed, asr, compute, 8, "en", literalize_numbers=False
+            )
+            text = " ".join(
+                seg.get("text", "").strip() for seg in result.get("segments", [])
+            ).strip()
+            if text:
+                reftext = text
+                logger.info(f"dots.tts [auto] transcribed ref audio")
+        except Exception as error:
+            logger.warning(f"dots.tts [auto] ref transcription failed: {error}")
 
-    if reftext:
-        reftext = _shorten_ref_text(reftext)
-
-    _ref_prep_cache[reffile] = (trimmed, reftext)
+    _dots_ref_cache[reffile] = (trimmed, reftext)
     return trimmed, reftext
 
 
-def _enable_f5_max_chars_floor():
-    """Force a minimum F5-TTS chunk size so a short/empty ref_text can't
-    produce many tiny chunks (slow + poor GPU use). Tunable via env
-    F5TTS_MAX_CHARS (default 200). Set to 0 to disable."""
-    try:
-        import f5_tts.infer.utils_infer as ui
-    except Exception:
-        return
-    floor = int(os.environ.get("F5TTS_MAX_CHARS", "150"))
-    if floor <= 0 or getattr(ui, "_max_chars_floor_patched", False):
-        return
-    orig = ui.chunk_text
-    def patched(text, max_chars=135, **kw):
-        floor = int(os.environ.get("F5TTS_MAX_CHARS", "150"))
-        eff = max(max_chars, floor)
-        eff = min(eff, 180)  # ceiling: overlong chunks can crash (8192 cap)
-        return orig(text, eff, **kw)
-    ui.chunk_text = patched
-    ui._max_chars_floor_patched = True
-    logger.info(f"F5-TTS max_chars floor set to {floor}")
+def _get_dots_runtime():
+    """Load the dots.tts runtime once and cache it (shared across segments)."""
+    global _dots_runtime
+    if _dots_runtime is not None:
+        return _dots_runtime
+    logger.info("Loading dots.tts runtime (rednote-hilab/dots.tts-soar)...")
+    from dots_tts.runtime import DotsTtsRuntime
+    model = os.environ.get("DOTS_MODEL", "rednote-hilab/dots.tts-soar")
+    _dots_runtime = DotsTtsRuntime.from_pretrained(
+        model,
+        precision="bfloat16",
+        optimize=True,  # torch.compile
+    )
+    logger.info("dots.tts runtime loaded.")
+    return _dots_runtime
 
-def segments_f5_tts(filtered_f5_segments, TRANSLATE_AUDIO_TO):
-    """F5-TTS — clean modern English, zero-shot voice cloning from a sample.
 
-    Uses F5TTS_VOICES_LIST entries "reffile::reftext". 'basic' reffile
-    downloads F5's official English sample. Cloned voices come from
-    ./_F5TTS_/<name>.wav + ./_F5TTS_/<name>.txt.
+def segments_dots_tts(filtered_dots_segments, TRANSLATE_AUDIO_TO):
+    """dots.tts — fully continuous 2B AR TTS, zero-shot voice cloning.
+
+    Uses DOTS_VOICES_LIST entries "reffile::reftext". Cloned voices come from
+    ./_DOTS_/<name>.wav + ./_DOTS_/<name>.txt.
     """
-    from .language_configuration import F5TTS_VOICES_LIST
-
-    _enable_f5_max_chars_floor()
+    from .language_configuration import DOTS_VOICES_LIST
 
     filtered_segments = sorted(
-        filtered_f5_segments["segments"], key=lambda x: x["tts_name"]
+        filtered_dots_segments["segments"], key=lambda x: x["tts_name"]
     )
 
-    tts = None
-    current_key = None
-    ref_audio_cache = {}
+    runtime = None
 
     for segment in tqdm(filtered_segments):
         text = segment["text"]
         start = segment["start"]
         tts_name = segment["tts_name"]
-        refspec = F5TTS_VOICES_LIST.get(tts_name, "basic::Some call me nature, others call me mother nature.")
+        refspec = DOTS_VOICES_LIST.get(tts_name)
+        if not refspec:
+            logger.warning(f"dots.tts: no reference for {tts_name}, skipping")
+            continue
         reffile, reftext = refspec.split("::", 1)
-        if reffile != "basic":
-            reffile, reftext = _prepare_ref_audio_and_text(reffile, reftext)
+        reffile, reftext = _dots_prepare_ref(reffile, reftext)
 
         filename = f"audio/{start}.ogg"
 
-        # One shared model; reload only when reffile changes.
-        key = reffile
-        if key != current_key:
-            current_key = key
-            if tts is not None:
-                del tts
-                gc.collect()
-                torch.cuda.empty_cache()
-            if key == "basic":
-                if "basic" not in ref_audio_cache:
-                    basic = "basic_ref_en.wav"
-                    if not os.path.isfile(basic):
-                        logger.info("Downloading F5-TTS default English sample...")
-                        run_command(
-                            "curl -sL -o basic_ref_en.wav "
-                            "https://raw.githubusercontent.com/SWivid/F5-TTS/main/"
-                            "src/f5_tts/infer/examples/basic/basic_ref_en.wav"
-                        )
-                    ref_audio_cache["basic"] = basic
-                ref_audio = ref_audio_cache["basic"]
-            else:
-                ref_audio = reffile
-            logger.info(f"Loading F5-TTS with ref={ref_audio}")
-            from f5_tts.api import F5TTS
-
-            device = os.environ.get("SONITR_DEVICE", "cuda")
-            tts = F5TTS(device=device)
-
-        logger.info(f"F5-TTS [{ref_audio}]: {text[:60]}... → {filename}")
         try:
-            nfe_step = int(os.environ.get("F5TTS_NFE_STEP", "16"))
-            wav, sr, _ = tts.infer(
-                ref_file=ref_audio,
-                ref_text=reftext,
-                gen_text=text,
-                speed=1.0,
-                nfe_step=nfe_step,
-                cfg_strength=2.0,
-                target_rms=0.1,
+            if runtime is None:
+                runtime = _get_dots_runtime()
+
+            logger.info(f"dots.tts [{reffile}]: {text[:60]}... → {filename}")
+            result = runtime.generate(
+                text=text,
+                prompt_audio_path=reffile,
+                prompt_text=reftext,
+                num_steps=10,
+                guidance_scale=1.2,
             )
-            data = wav.astype(np.float32)
-            data = pad_array(data, sr)
+            audio = result["audio"].float().cpu().squeeze().numpy()
+            sr = int(result["sample_rate"])
+            data = pad_array(audio, sr)
             write_chunked(
                 file=filename,
                 samplerate=sr,
@@ -1279,11 +1216,11 @@ def segments_f5_tts(filtered_f5_segments, TRANSLATE_AUDIO_TO):
             )
             verify_saved_file_and_size(filename)
         except Exception as error:
-            logger.error(f"F5-TTS failed: {error}")
+            logger.error(f"dots.tts failed: {error}")
             error_handling_in_tts(error, segment, TRANSLATE_AUDIO_TO, filename)
 
-    if tts is not None:
-        del tts
+    if runtime is not None:
+        del runtime
     gc.collect()
     torch.cuda.empty_cache()
 
@@ -1399,7 +1336,7 @@ def audio_segmentation_to_voice(
     pattern_openai_tts = re.compile(r".* OpenAI-TTS$")
     pattern_kokoro = re.compile(r".* Kokoro$")
     pattern_pocket_tts = re.compile(r".* Pocket-TTS$")
-    pattern_f5 = re.compile(r".* F5-TTS$")
+    pattern_dots = re.compile(r".* Dots-TTS$")
     
 
     all_segments = result_diarize["segments"]
@@ -1416,7 +1353,7 @@ def audio_segmentation_to_voice(
     )
     speakers_kokoro = find_spkr(pattern_kokoro, speaker_to_voice, all_segments)
     speakers_pocket_tts = find_spkr(pattern_pocket_tts, speaker_to_voice, all_segments)
-    speakers_f5 = find_spkr(pattern_f5, speaker_to_voice, all_segments)
+    speakers_dots = find_spkr(pattern_dots, speaker_to_voice, all_segments)
     
 
     # Filter method in segments
@@ -1428,7 +1365,7 @@ def audio_segmentation_to_voice(
     filtered_openai_tts = filter_by_speaker(speakers_openai_tts, all_segments)
     filtered_kokoro = filter_by_speaker(speakers_kokoro, all_segments)
     filtered_pocket_tts = filter_by_speaker(speakers_pocket_tts, all_segments)
-    filtered_f5 = filter_by_speaker(speakers_f5, all_segments)
+    filtered_dots = filter_by_speaker(speakers_dots, all_segments)
     
 
     # Infer
@@ -1465,9 +1402,9 @@ def audio_segmentation_to_voice(
     if filtered_pocket_tts["segments"]:
         logger.info(f"Pocket TTS: {speakers_pocket_tts}")
         segments_pocket_tts(filtered_pocket_tts, TRANSLATE_AUDIO_TO)
-    if filtered_f5["segments"]:
-        logger.info(f"F5 TTS: {speakers_f5}")
-        segments_f5_tts(filtered_f5, TRANSLATE_AUDIO_TO)
+    if filtered_dots["segments"]:
+        logger.info(f"dots.tts: {speakers_dots}")
+        segments_dots_tts(filtered_dots, TRANSLATE_AUDIO_TO)
 
 
     [result.pop("tts_name", None) for result in result_diarize["segments"]]

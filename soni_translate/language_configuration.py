@@ -550,22 +550,18 @@ POCKET_TTS_VOICES_LIST = {
     f"en-Pocket-{v} Pocket-TTS": v for v in _POCKET_EN_VOICES
 }
 
-# === F5 TTS ===
-# Zero-shot voice cloning from a reference audio + its exact text.
-# Built-in default: F5-TTS's official English sample.
-# Cloned voices: drop a .wav + matching .txt (same basename) into ./_F5TTS_/
-#   e.g. _F5TTS_/john.wav + _F5TTS_/john.txt  ->  "en-F5-john F5-TTS" voice.
-# Value format: "reffile::reftext"  (basic = bundled default sample)
-F5TTS_VOICES_LIST = {
-    "en-F5-Default F5-TTS": (
-        "basic::Some call me nature, others call me mother nature."
-    ),
-}
+# === dots.tts ===
+# Fully continuous 2B autoregressive TTS — zero-shot voice cloning from a
+# reference audio + its exact text. Apache-2.0, public HF checkpoints.
+# Cloned voices: drop a .wav + matching .txt (same basename) into ./_DOTS_/
+#   e.g. _DOTS_/john.wav + _DOTS_/john.txt  ->  "en-Dots-john Dots-TTS" voice.
+# Value format: "reffile::reftext"
+DOTS_VOICES_LIST = {}
 
-def _scan_f5_cloned_voices():
-    """Add any user voice samples dropped in ./_F5TTS_/ as clone voices."""
+def _scan_dots_cloned_voices():
+    """Add any user voice samples dropped in ./_DOTS_/ as clone voices."""
     import glob
-    folder = "_F5TTS_"
+    folder = "_DOTS_"
     if not os.path.isdir(folder):
         return
     for wav in sorted(glob.glob(os.path.join(folder, "*.wav")) + glob.glob(os.path.join(folder, "*.mp3"))):
@@ -575,9 +571,9 @@ def _scan_f5_cloned_voices():
         if os.path.isfile(txt):
             reftext = open(txt, encoding="utf-8", errors="replace").read().strip()
             if reftext:
-                F5TTS_VOICES_LIST[f"en-F5-{name} F5-TTS"] = f"{wav}::{reftext}"
+                DOTS_VOICES_LIST[f"en-Dots-{name} Dots-TTS"] = f"{wav}::{reftext}"
 
-_scan_f5_cloned_voices()
+_scan_dots_cloned_voices()
 
 LANGUAGE_CODE_IN_THREE_LETTERS = {
     "Automatic detection": "aut",
