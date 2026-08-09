@@ -550,29 +550,19 @@ POCKET_TTS_VOICES_LIST = {
     f"en-Pocket-{v} Pocket-TTS": v for v in _POCKET_EN_VOICES
 }
 
-# === dots.tts ===
-# 2B continuous AR TTS, zero-shot voice cloning.
-# Cloned voices: drop a .wav + matching .txt (same basename) into ./_DOTS_/
-#   e.g. _DOTS_/john.wav + _DOTS_/john.txt  ->  "en-Dots-john Dots-TTS" voice.
-# Value format: "reffile::reftext"
-DOTS_VOICES_LIST = {}
-
-def _scan_dots_cloned_voices():
-    """Add any user voice samples dropped in ./_DOTS_/ as clone voices."""
+def _scan_pocket_cloned_voices():
+    """Add cloned voices: drop a .wav sample into ./_POCKET_/ and it appears
+    as a voice. Value is the wav path — pocket-tts uses it as an audio
+    conditioning file (zero-shot clone). .txt is optional."""
     import glob
-    folder = "_DOTS_"
+    folder = "_POCKET_"
     if not os.path.isdir(folder):
         return
-    for wav in sorted(glob.glob(os.path.join(folder, "*.wav")) + glob.glob(os.path.join(folder, "*.mp3"))):
-        base = os.path.splitext(wav)[0]
-        name = os.path.basename(base)
-        txt = base + ".txt"
-        if os.path.isfile(txt):
-            reftext = open(txt, encoding="utf-8", errors="replace").read().strip()
-            if reftext:
-                DOTS_VOICES_LIST[f"en-Dots-{name} Dots-TTS"] = f"{wav}::{reftext}"
+    for wav in sorted(glob.glob(os.path.join(folder, "*.wav")) + glob.glob(os.path.join(folder, "*.mp3")) + glob.glob(os.path.join(folder, "*.ogg"))):
+        name = os.path.splitext(os.path.basename(wav))[0]
+        POCKET_TTS_VOICES_LIST[f"en-Pocket-{name} Pocket-TTS"] = wav
 
-_scan_dots_cloned_voices()
+_scan_pocket_cloned_voices()
 
 LANGUAGE_CODE_IN_THREE_LETTERS = {
     "Automatic detection": "aut",

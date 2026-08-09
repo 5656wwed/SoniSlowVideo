@@ -57,7 +57,6 @@ from soni_translate.language_configuration import (
     OPENAI_TTS_MODELS,
     KOKORO_VOICES_LIST,
     POCKET_TTS_VOICES_LIST,
-    DOTS_VOICES_LIST,
 )
 from soni_translate.utils import (
     remove_files,
@@ -121,7 +120,7 @@ directories = [
     "weights",
     "clean_song_output",
     "_XTTS_",
-    "_DOTS_",
+    "_POCKET_",
     f"audio2{os.sep}audio",
     "audio",
     "outputs",
@@ -143,9 +142,6 @@ class TTS_Info:
         self.list_pocket_tts = sorted(
             k for k in POCKET_TTS_VOICES_LIST.keys() if k.startswith("en-")
         )
-        self.list_dots = sorted(
-            k for k in DOTS_VOICES_LIST.keys() if k.startswith("en-")
-        )
         self.piper_enabled = False
         self.list_vits_onnx = []  # hidden
         self.xtts_enabled = xtts_enabled
@@ -161,7 +157,6 @@ class TTS_Info:
             + self.list_openai_tts
             + self.list_kokoro
             + self.list_pocket_tts
-            + self.list_dots
             + self.list_vits_onnx
         )
         return list_tts

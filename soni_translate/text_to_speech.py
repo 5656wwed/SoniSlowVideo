@@ -1093,138 +1093,6 @@ def segments_pocket_tts(filtered_pocket_segments, TRANSLATE_AUDIO_TO):
     gc.collect()
 
 
-# =====================================
-# dots.tts — fully continuous 2B AR TTS (voice cloning)
-# =====================================
-
-_dots_runtime = None
-_dots_ref_cache = {}
-
-
-def _dots_prepare_ref(reffile, reftext):
-    """Trim ref audio to ~10s and auto-transcribe ref_text when missing/broken
-    (dots.tts wants a transcript that matches the reference audio). Cached."""
-    if reffile in _dots_ref_cache:
-        return _dots_ref_cache[reffile]
-
-    max_sec = float(os.environ.get("DOTS_REF_MAX_SEC", "10"))
-    trimmed = reffile
-    try:
-        info = sf.info(reffile)
-        dur = info.frames / info.samplerate
-    except Exception:
-        dur = 0
-
-    if dur > max_sec:
-        trimmed = os.path.splitext(reffile)[0] + f"_trim{int(max_sec)}s.wav"
-        if not os.path.isfile(trimmed):
-            start = max(0, dur / 2 - max_sec / 2)
-            run_command(
-                f'ffmpeg -y -loglevel error -ss {start:.2f} '
-                f'-i "{reffile}" -t {max_sec} -ar 48000 -ac 1 "{trimmed}"'
-            )
-        logger.info(
-            f"dots.tts [auto] ref audio {dur:.1f}s -> took middle {max_sec}s"
-        )
-
-    if reftext is None or len(reftext.strip()) < 15:
-        from .speech_segmentation import transcribe_speech
-        device = os.environ.get("SONITR_DEVICE", "cuda")
-        asr = os.environ.get("DOTS_ASR_MODEL", "base.en")
-        compute = "float16" if device == "cuda" else "int8"
-        try:
-            _, result = transcribe_speech(
-                trimmed, asr, compute, 8, "en", literalize_numbers=False
-            )
-            text = " ".join(
-                seg.get("text", "").strip() for seg in result.get("segments", [])
-            ).strip()
-            if text:
-                reftext = text
-                logger.info("dots.tts [auto] transcribed ref audio")
-        except Exception as error:
-            logger.warning(f"dots.tts [auto] ref transcription failed: {error}")
-
-    _dots_ref_cache[reffile] = (trimmed, reftext)
-    return trimmed, reftext
-
-
-def _get_dots_runtime():
-    """Load the dots.tts runtime once and cache it (shared across segments)."""
-    global _dots_runtime
-    if _dots_runtime is not None:
-        return _dots_runtime
-    logger.info("Loading dots.tts runtime (rednote-hilab/dots.tts-soar)...")
-    from dots_tts.runtime import DotsTtsRuntime
-    model = os.environ.get("DOTS_MODEL", "rednote-hilab/dots.tts-soar")
-    _dots_runtime = DotsTtsRuntime.from_pretrained(
-        model,
-        precision="bfloat16",
-        optimize=False,  # keep off for T4 compatibility
-    )
-    logger.info("dots.tts runtime loaded.")
-    return _dots_runtime
-
-
-def segments_dots_tts(filtered_dots_segments, TRANSLATE_AUDIO_TO):
-    """dots.tts — 2B continuous AR TTS, zero-shot voice cloning.
-
-    Uses DOTS_VOICES_LIST entries "reffile::reftext". Cloned voices come from
-    ./_DOTS_/<name>.wav + ./_DOTS_/<name>.txt.
-    """
-    from .language_configuration import DOTS_VOICES_LIST
-
-    filtered_segments = sorted(
-        filtered_dots_segments["segments"], key=lambda x: x["tts_name"]
-    )
-
-    runtime = None
-
-    for segment in tqdm(filtered_segments):
-        text = segment["text"]
-        start = segment["start"]
-        tts_name = segment["tts_name"]
-        refspec = DOTS_VOICES_LIST.get(tts_name)
-        if not refspec:
-            logger.warning(f"dots.tts: no reference for {tts_name}, skipping")
-            continue
-        reffile, reftext = refspec.split("::", 1)
-        reffile, reftext = _dots_prepare_ref(reffile, reftext)
-
-        filename = f"audio/{start}.ogg"
-
-        try:
-            if runtime is None:
-                runtime = _get_dots_runtime()
-
-            logger.info(f"dots.tts [{reffile}]: {text[:60]}... → {filename}")
-            result = runtime.generate(
-                text=text,
-                prompt_audio_path=reffile,
-                prompt_text=reftext,
-                num_steps=10,
-                guidance_scale=1.2,
-            )
-            audio = result["audio"].float().cpu().squeeze().numpy()
-            sr = int(result["sample_rate"])
-            data = pad_array(audio, sr)
-            write_chunked(
-                file=filename,
-                samplerate=sr,
-                data=data,
-                format="ogg",
-                subtype="vorbis",
-            )
-            verify_saved_file_and_size(filename)
-        except Exception as error:
-            logger.error(f"dots.tts failed: {error}")
-            error_handling_in_tts(error, segment, TRANSLATE_AUDIO_TO, filename)
-
-    if runtime is not None:
-        del runtime
-    gc.collect()
-    torch.cuda.empty_cache()
-
 
 # =====================================
 # Select task TTS
@@ -1337,7 +1205,6 @@ def audio_segmentation_to_voice(
     pattern_openai_tts = re.compile(r".* OpenAI-TTS$")
     pattern_kokoro = re.compile(r".* Kokoro$")
     pattern_pocket_tts = re.compile(r".* Pocket-TTS$")
-    pattern_dots = re.compile(r".* Dots-TTS$")
     
 
     all_segments = result_diarize["segments"]
@@ -1354,7 +1221,6 @@ def audio_segmentation_to_voice(
     )
     speakers_kokoro = find_spkr(pattern_kokoro, speaker_to_voice, all_segments)
     speakers_pocket_tts = find_spkr(pattern_pocket_tts, speaker_to_voice, all_segments)
-    speakers_dots = find_spkr(pattern_dots, speaker_to_voice, all_segments)
     
 
     # Filter method in segments
@@ -1366,7 +1232,6 @@ def audio_segmentation_to_voice(
     filtered_openai_tts = filter_by_speaker(speakers_openai_tts, all_segments)
     filtered_kokoro = filter_by_speaker(speakers_kokoro, all_segments)
     filtered_pocket_tts = filter_by_speaker(speakers_pocket_tts, all_segments)
-    filtered_dots = filter_by_speaker(speakers_dots, all_segments)
     
 
     # Infer
@@ -1403,9 +1268,6 @@ def audio_segmentation_to_voice(
     if filtered_pocket_tts["segments"]:
         logger.info(f"Pocket TTS: {speakers_pocket_tts}")
         segments_pocket_tts(filtered_pocket_tts, TRANSLATE_AUDIO_TO)
-    if filtered_dots["segments"]:
-        logger.info(f"dots.tts: {speakers_dots}")
-        segments_dots_tts(filtered_dots, TRANSLATE_AUDIO_TO)
 
 
     [result.pop("tts_name", None) for result in result_diarize["segments"]]
