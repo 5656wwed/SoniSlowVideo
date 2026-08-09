@@ -4,18 +4,32 @@
 
 Fork of [5656wwed/SoniTranslate](https://github.com/5656wwed/SoniTranslate) with stretch-video mode ON by default.
 
-## Colab (different link)
+## Colab
 
+dots.tts branch (voice cloning + clean natural voice):
+https://colab.research.google.com/github/5656wwed/SoniSlowVideo/blob/dots-tts-clean/SoniSlowVideo_Colab.ipynb
+
+Main (stable) branch:
 https://colab.research.google.com/github/5656wwed/SoniSlowVideo/blob/main/SoniSlowVideo_Colab.ipynb
+
+## dots.tts engine (dots-tts-clean branch)
+
+- Adds a **dots.tts** engine: fully continuous 2B autoregressive TTS (Apache-2.0,
+  public HF checkpoints — free, no API key) with zero-shot **voice cloning**.
+- To **clone**: upload your sample **once** through the Colab UI (Step 1.5). It's
+  saved to **Google Drive** (`MyDrive/SoniSlow_Dots_Voices/`) and automatically
+  reloaded on every future run — no re-uploading, no editing files.
+  - The sample needs a `.wav`/`.mp3` plus the **exact text** it says (you type
+    it once when uploading).
+  - Your clone appears in the TTS list as `en-Dots-<name> Dots-TTS`.
+- Keeps `torch==2.5.1` so whisperX / pyannote are unaffected.
+- dots.tts is installed with `--no-deps` so it does not pull numpy 2.x.
 
 ## Behavior
 
 - Kokoro stays near natural speed
-
 - Audio is not force-sped to fit short SRT slots
-
 - Final video is slowed (`setpts`) so length matches the voice track
-
 - SRT mode still skips translation/diarization
 
 ## Do not confuse with
