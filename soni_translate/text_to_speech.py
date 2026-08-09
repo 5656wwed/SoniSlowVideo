@@ -1487,9 +1487,9 @@ def accelerate_segments(
         if acc_percentage == 1.0 and info_enc == "OGG":
             copy_files(filename, f"{folder_output}{os.sep}audio")
         else:
-            # Fill the slot: speed up long audio (up to 1.35) OR slow down short
-            # audio (down to 0.75) so it matches the video like Edge does.
-            acc_percentage = max(0.75, min(float(acc_percentage), 1.35))
+            # Speed up long audio (up to 1.35). Do NOT slow short audio here —
+            # short audio is padded with silence below (keeps voice natural).
+            acc_percentage = max(1.03, min(float(acc_percentage), 1.35))
             atempo = _atempo_filter_chain(acc_percentage)
             os.system(
                 f"ffmpeg -y -loglevel panic -i {filename} "
@@ -1523,30 +1523,30 @@ def accelerate_segments(
                             )
                         elif os.path.isfile(tmp_force):
                             os.remove(tmp_force)
-                # Slow-fill pass: if the audio is still SHORTER than the slot,
-                # stretch it down to fill the visual (atempo < 1). Capped so it
-                # doesn't sound unnaturally slow.
-                elif duration_create < duration_true * 0.95 and duration_true > 0.2:
-                    fill_rate = max(
-                        duration_create / duration_true, 0.75
-                    )
-                    if fill_rate < 0.97:
-                        tmp_fill = out_file + ".fill.ogg"
-                        atempo = _atempo_filter_chain(fill_rate)
+                # Pad pass: if audio is SHORTER than the slot, append silence to
+                # fill the visual (voice stays natural speed — no slow-down).
+                # Cap padding so we don't add huge dead air on a very short line.
+                if duration_create < duration_true * 0.95 and duration_true > 0.2:
+                    pad_sec = duration_true - duration_create
+                    max_pad = 1.5  # don't add more than 1.5s of silence
+                    if pad_sec > 0.15:
+                        pad_sec = min(pad_sec, max_pad)
+                        tmp_pad = out_file + ".pad.ogg"
                         rc = os.system(
                             f"ffmpeg -y -loglevel panic -i {out_file} "
-                            f"-filter:a {atempo} {tmp_fill}"
+                            f"-af apad=pad_dur={pad_sec:.3f} "
+                            f"-c:a libvorbis -q:a 4 {tmp_pad}"
                         )
-                        if rc == 0 and os.path.isfile(tmp_fill):
-                            os.replace(tmp_fill, out_file)
+                        if rc == 0 and os.path.isfile(tmp_pad):
+                            os.replace(tmp_pad, out_file)
                             logger.info(
-                                f"Slow-fill {filename}: "
+                                f"Pad {filename}: "
                                 f"{duration_create:.2f}s → "
                                 f"slot {duration_true:.2f}s "
-                                f"(x{fill_rate:.2f})"
+                                f"(+{pad_sec:.2f}s silence)"
                             )
-                        elif os.path.isfile(tmp_fill):
-                            os.remove(tmp_fill)
+                        elif os.path.isfile(tmp_pad):
+                            os.remove(tmp_pad)
             except Exception as error:
                 logger.error(f"Force-fit failed for {filename}: {error}")
 
