@@ -1,7 +1,7 @@
 from gtts import gTTS
 import edge_tts, asyncio, json, glob # noqa
 from tqdm import tqdm
-import librosa, os, re, torch, gc, subprocess # noqa
+import librosa, os, re, torch, gc, subprocess, time # noqa
 from .language_configuration import (
     fix_code_language,
     BARK_VOICES_LIST,
