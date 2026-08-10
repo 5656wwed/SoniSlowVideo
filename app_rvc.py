@@ -2266,6 +2266,89 @@ def create_gui(theme, logs_in_gui=False):
                                     label="LUT (.cube / .3dl) — optional color grade",
                                     file_count="single",
                                 )
+                                preview_btn = gr.Button(
+                                    "👁️ Preview (see this crop/filter on a frame)"
+                                )
+                                preview_img = gr.Image(
+                                    label="Preview",
+                                    type="filepath",
+                                    interactive=False,
+                                )
+
+                            def preview_edit(
+                                video, enable, zoom, cx, cy, cw, ch,
+                                bright, contrast, sat, gamma, lut,
+                            ):
+                                if video is None:
+                                    return None
+                                src = (video.name if hasattr(video, "name")
+                                       else str(video))
+                                if not os.path.isfile(src):
+                                    return None
+                                import subprocess as _sp
+                                sw = sh = 0
+                                try:
+                                    probe = _sp.check_output(
+                                        ["ffprobe", "-v", "error",
+                                         "-select_streams", "v:0",
+                                         "-show_entries", "stream=width,height",
+                                         "-of", "csv=p=0", src],
+                                        text=True).strip().split(",")
+                                    sw, sh = int(probe[0]), int(probe[1])
+                                except Exception:
+                                    pass
+                                vf = []
+                                if enable and zoom and zoom > 100 and sw and sh:
+                                    zw = max(2, int(sw * 100.0 / zoom))
+                                    zh = max(2, int(sh * 100.0 / zoom))
+                                    vf.append(
+                                        f"crop={zw}:{zh}:(in_w-{zw})/2:(in_h-{zh})/2"
+                                    )
+                                if enable and cw and ch:
+                                    vf.append(
+                                        f"crop={int(cw)}:{int(ch)}:{int(cx)}:{int(cy)}"
+                                    )
+                                if enable and (bright or contrast != 1.0
+                                               or sat != 1.0 or gamma != 1.0):
+                                    vf.append(
+                                        f"eq=brightness={bright:.3f}:"
+                                        f"contrast={contrast:.3f}:"
+                                        f"saturation={sat:.3f}:gamma={gamma:.3f}"
+                                    )
+                                if enable and lut is not None and hasattr(lut, "name"):
+                                    _lp = lut.name
+                                    if os.path.isfile(_lp):
+                                        vf.append(f"lut3d=file='{_lp}'")
+                                fv = ",".join(vf) if vf else "null"
+                                out = "/tmp/preview_frame.png"
+                                if os.path.exists(out):
+                                    os.remove(out)
+                                cmd = ["ffmpeg", "-y", "-ss", "1",
+                                       "-i", src, "-frames:v", "1",
+                                       "-vf", fv, out]
+                                p = _sp.run(cmd, capture_output=True, text=True)
+                                if p.returncode != 0:
+                                    cmd = ["ffmpeg", "-y", "-i", src,
+                                           "-frames:v", "1", "-vf", fv, out]
+                                    p = _sp.run(cmd, capture_output=True,
+                                                text=True)
+                                if p.returncode != 0:
+                                    logger.error(
+                                        "Preview failed: "
+                                        + p.stderr[-400:]
+                                    )
+                                    return None
+                                return out
+
+                            preview_btn.click(
+                                preview_edit,
+                                inputs=[video_input, edit_crop_enable,
+                                        edit_zoom, edit_crop_x, edit_crop_y,
+                                        edit_crop_w, edit_crop_h,
+                                        edit_bright, edit_contrast,
+                                        edit_sat, edit_gamma, edit_lut],
+                                outputs=[preview_img],
+                            )
 
                 with gr.Column(variant="compact"):
                     edit_sub_check = gr.Checkbox(
