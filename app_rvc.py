@@ -455,6 +455,16 @@ class SoniTranslate(SoniTrCache):
         enable_cache=True,
         custom_voices=False,
         custom_voices_workers=1,
+        edit_crop_enable=False,
+        edit_zoom=100,
+        edit_crop_x=0,
+        edit_crop_y=0,
+        edit_crop_w=0,
+        edit_crop_h=0,
+        edit_bright=0.0,
+        edit_contrast=1.0,
+        edit_sat=1.0,
+        edit_gamma=1.0,
         is_gui=False,
         progress=gr.Progress(),
     ):
@@ -654,6 +664,55 @@ class SoniTranslate(SoniTrCache):
                         preview, media_file, base_video_file, base_audio_wav
                     )
                 logger.debug("Set file complete.")
+
+            # Apply crop/filter to the video BEFORE dubbing (if enabled)
+            if edit_crop_enable and not is_audio_file(media_file):
+                import subprocess as _sp
+                try:
+                    _probe = _sp.check_output(
+                        ["ffprobe", "-v", "error", "-select_streams", "v:0",
+                         "-show_entries", "stream=width,height",
+                         "-of", "csv=p=0", base_video_file],
+                        text=True).strip().split(",")
+                    _ew, _eh = int(_probe[0]), int(_probe[1])
+                except Exception:
+                    _ew = _eh = 0
+                _vf = []
+                if edit_zoom and edit_zoom > 100 and _ew and _eh:
+                    _zw = max(2, int(_ew * 100.0 / edit_zoom))
+                    _zh = max(2, int(_eh * 100.0 / edit_zoom))
+                    _vf.append(
+                        f"crop={_zw}:{_zh}:(in_w-{_zw})/2:(in_h-{_zh})/2"
+                    )
+                if edit_crop_w and edit_crop_h:
+                    _vf.append(
+                        f"crop={int(edit_crop_w)}:{int(edit_crop_h)}:"
+                        f"{int(edit_crop_x)}:{int(edit_crop_y)}"
+                    )
+                if (edit_bright or edit_contrast != 1.0
+                        or edit_sat != 1.0 or edit_gamma != 1.0):
+                    _vf.append(
+                        f"eq=brightness={edit_bright:.3f}:"
+                        f"contrast={edit_contrast:.3f}:"
+                        f"saturation={edit_sat:.3f}:gamma={edit_gamma:.3f}"
+                    )
+                if _vf:
+                    _tmp = base_video_file + ".edit.mp4"
+                    _cmd = [
+                        "ffmpeg", "-y", "-i", base_video_file,
+                        "-vf", ",".join(_vf),
+                        "-c:v", "libx264", "-preset", "medium", "-crf", "20",
+                        "-c:a", "aac", "-b:a", "192k",
+                        "-movflags", "+faststart", _tmp,
+                    ]
+                    _rc = _sp.run(_cmd, capture_output=True, text=True)
+                    if _rc.returncode == 0:
+                        os.replace(_tmp, base_video_file)
+                        logger.info("Pre-dub crop/filter applied to video.")
+                    else:
+                        logger.error(
+                            f"Pre-dub edit failed: {_rc.stderr[-400:]}"
+                        )
 
             if "sound" in output_type:
                 prog_disp(
@@ -2156,6 +2215,49 @@ def create_gui(theme, logs_in_gui=False):
                                 True, visible=False
                             )
 
+                            with gr.Accordion(
+                                "🎬 Crop / Filter (apply BEFORE dubbing)",
+                                open=False,
+                            ):
+                                edit_crop_enable = gr.Checkbox(
+                                    False,
+                                    label="Enable edit (crop + color)",
+                                )
+                                edit_zoom = gr.Slider(
+                                    100, 250, value=100, step=1,
+                                    label="Zoom (100 = none, 150 = 1.5x center)",
+                                )
+                                edit_crop_x = gr.Number(
+                                    value=0, precision=0, label="Crop X"
+                                )
+                                edit_crop_y = gr.Number(
+                                    value=0, precision=0, label="Crop Y"
+                                )
+                                edit_crop_w = gr.Number(
+                                    value=0, precision=0,
+                                    label="Crop W (0 = keep full)"
+                                )
+                                edit_crop_h = gr.Number(
+                                    value=0, precision=0,
+                                    label="Crop H (0 = keep full)"
+                                )
+                                edit_bright = gr.Slider(
+                                    -1.0, 1.0, value=0.0, step=0.05,
+                                    label="Brightness",
+                                )
+                                edit_contrast = gr.Slider(
+                                    0.0, 2.0, value=1.0, step=0.05,
+                                    label="Contrast",
+                                )
+                                edit_sat = gr.Slider(
+                                    0.0, 2.0, value=1.0, step=0.05,
+                                    label="Saturation",
+                                )
+                                edit_gamma = gr.Slider(
+                                    0.2, 3.0, value=1.0, step=0.05,
+                                    label="Gamma",
+                                )
+
                 with gr.Column(variant="compact"):
                     edit_sub_check = gr.Checkbox(
                         label=lg_conf["edit_sub_label"],
@@ -3053,6 +3155,16 @@ def create_gui(theme, logs_in_gui=False):
                 enable_cache_gui,
                 enable_custom_voice,
                 workers_custom_voice,
+                edit_crop_enable,
+                edit_zoom,
+                edit_crop_x,
+                edit_crop_y,
+                edit_crop_w,
+                edit_crop_h,
+                edit_bright,
+                edit_contrast,
+                edit_sat,
+                edit_gamma,
                 is_gui_dummy_check,
             ],
             outputs=video_output,
