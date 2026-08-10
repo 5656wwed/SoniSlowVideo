@@ -470,6 +470,8 @@ class SoniTranslate(SoniTrCache):
         cut_mirror_sec=5,
         bgm_file=None,
         bgm_volume=15,
+        bgm_preset=None,
+        lut_preset=None,
         is_gui=False,
         progress=gr.Progress(),
     ):
@@ -746,10 +748,13 @@ class SoniTranslate(SoniTrCache):
                             f"contrast={edit_contrast:.3f}:"
                             f"saturation={edit_sat:.3f}:gamma={edit_gamma:.3f}"
                         )
-                    if edit_lut is not None and hasattr(edit_lut, "name"):
+                    _lutp = None
+                    if lut_preset:
+                        _lutp = os.path.join("assets", "lut", lut_preset)
+                    elif edit_lut is not None and hasattr(edit_lut, "name"):
                         _lutp = edit_lut.name
-                        if os.path.isfile(_lutp):
-                            _vf.append(f"lut3d=file='{_lutp}'")
+                    if _lutp and os.path.isfile(_lutp):
+                        _vf.append(f"lut3d=file='{_lutp}'")
                     if _vf:
                         _tmp = base_video_file + ".edit.mp4"
                         _cmd = [
@@ -1464,9 +1469,13 @@ class SoniTranslate(SoniTrCache):
                         f'"{video_output_file}"'
                     )
 
-        # Mix background music under the dub (ducked so voice stays clear)
-        if (bgm_file is not None and hasattr(bgm_file, "name")
-                and os.path.isfile(bgm_file.name)
+        # Mix background music under the dub (flat, at set volume)
+        _bgmp = None
+        if bgm_preset:
+            _bgmp = os.path.join("assets", "bgm", bgm_preset)
+        elif bgm_file is not None and hasattr(bgm_file, "name"):
+            _bgmp = bgm_file.name
+        if (_bgmp and os.path.isfile(_bgmp)
                 and os.path.isfile(video_output_file)
                 and not is_audio_file(media_file)):
             try:
@@ -1484,7 +1493,7 @@ class SoniTranslate(SoniTrCache):
                 _bm_out = video_output_file + ".bgm.mp4"
                 _cmd = [
                     "ffmpeg", "-y", "-i", video_output_file,
-                    "-i", bgm_file.name,
+                    "-i", _bgmp,
                     "-filter_complex",
                     f"[1:a]volume={_bvol:.2f},atrim=0:{_bdur},"
                     f"asetpts=PTS-STARTPTS[bgm];"
@@ -1802,6 +1811,17 @@ class SoniTranslate(SoniTrCache):
 
 
 title = "<center><strong><font size='7'>📽️ SoniTranslate 🈷️</font></strong></center>"
+
+
+def _saved_files(folder, exts):
+    """List saved files in assets/<folder> so they appear as pickable options."""
+    base = os.path.join(os.getcwd(), "assets", folder)
+    out = []
+    if os.path.isdir(base):
+        for f in sorted(os.listdir(base)):
+            if f.lower().endswith(exts) and not f.startswith("."):
+                out.append(f)
+    return out
 
 
 def create_gui(theme, logs_in_gui=False):
@@ -2354,6 +2374,11 @@ def create_gui(theme, logs_in_gui=False):
                                     label="LUT (.cube / .3dl) — optional color grade",
                                     file_count="single",
                                 )
+                                lut_preset = gr.Dropdown(
+                                    choices=_saved_files("lut", (".cube", ".3dl", ".csp", ".m3d", ".mga")),
+                                    label="💾 Saved LUT (from repo, no upload needed)",
+                                    info="Add .cube/.3dl files to assets/lut/ in the repo to appear here",
+                                )
                                 cut_mirror_enable = gr.Checkbox(
                                     False,
                                     label="✂️ Cut every N sec & mirror alternate chunks "
@@ -2366,6 +2391,11 @@ def create_gui(theme, logs_in_gui=False):
                                 bgm_file = gr.File(
                                     label="🎵 Background music (mixed under the voice)",
                                     file_count="single",
+                                )
+                                bgm_preset = gr.Dropdown(
+                                    choices=_saved_files("bgm", (".mp3", ".wav", ".ogg", ".m4a", ".flac", ".aac")),
+                                    label="💾 Saved BGM (from repo, no upload needed)",
+                                    info="Add audio files to assets/bgm/ in the repo to appear here",
                                 )
                                 bgm_volume = gr.Slider(
                                     1, 60, value=15, step=1,
@@ -2382,7 +2412,7 @@ def create_gui(theme, logs_in_gui=False):
 
                             def preview_edit(
                                 video, enable, zoom, cx, cy, cw, ch,
-                                bright, contrast, sat, gamma, lut,
+                                bright, contrast, sat, gamma, lut, lut_preset,
                             ):
                                 if video is None:
                                     return None
@@ -2420,10 +2450,13 @@ def create_gui(theme, logs_in_gui=False):
                                         f"contrast={contrast:.3f}:"
                                         f"saturation={sat:.3f}:gamma={gamma:.3f}"
                                     )
-                                if enable and lut is not None and hasattr(lut, "name"):
-                                    _lp = lut.name
-                                    if os.path.isfile(_lp):
-                                        vf.append(f"lut3d=file='{_lp}'")
+                                _lutp = None
+                                if lut_preset:
+                                    _lutp = os.path.join("assets", "lut", lut_preset)
+                                elif lut is not None and hasattr(lut, "name"):
+                                    _lutp = lut.name
+                                if enable and _lutp and os.path.isfile(_lutp):
+                                    vf.append(f"lut3d=file='{_lutp}'")
                                 fv = ",".join(vf) if vf else "null"
                                 out = "/tmp/preview_frame.png"
                                 if os.path.exists(out):
@@ -2451,7 +2484,8 @@ def create_gui(theme, logs_in_gui=False):
                                         edit_zoom, edit_crop_x, edit_crop_y,
                                         edit_crop_w, edit_crop_h,
                                         edit_bright, edit_contrast,
-                                        edit_sat, edit_gamma, edit_lut],
+                                        edit_sat, edit_gamma, edit_lut,
+                                        lut_preset],
                                 outputs=[preview_img],
                             )
 
@@ -3373,6 +3407,8 @@ def create_gui(theme, logs_in_gui=False):
                 cut_mirror_sec,
                 bgm_file,
                 bgm_volume,
+                bgm_preset,
+                lut_preset,
                 is_gui_dummy_check,
             ],
             outputs=video_output,
