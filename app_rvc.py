@@ -2602,15 +2602,14 @@ def create_gui(theme, logs_in_gui=False):
 
         with gr.Tab("🎬 Video Edit"):
             gr.Markdown(
-                "Upload any video (or use your dubbed output). "
-                "Crop / resize / zoom + color grade (brightness, contrast, "
-                "saturation, gamma) + LUT. One button, then grab the file."
+                "**All-in-one video editor.** Upload a video (or your dubbed output), "
+                "set zoom/crop/color/LUT, add cut&mirror and background music. "
+                "One button, then grab the file."
             )
             with gr.Row():
                 with gr.Column():
                     se_video_input = gr.File(
-                        label="1. Upload video (.mp4)",
-                        file_count="single",
+                        label="1. Upload video (.mp4)", file_count="single"
                     )
                     se_zoom = gr.Slider(
                         100, 250, value=100, step=1,
@@ -2625,99 +2624,252 @@ def create_gui(theme, logs_in_gui=False):
                         label="3b. Output height (0 = keep original)",
                     )
                 with gr.Column():
-                    se_crop_on = gr.Checkbox(
-                        False, label="4. Enable crop region"
-                    )
+                    se_crop_on = gr.Checkbox(False, label="4. Enable crop region")
                     se_crop_x = gr.Number(value=0, precision=0, label="Crop X")
                     se_crop_y = gr.Number(value=0, precision=0, label="Crop Y")
                     se_crop_w = gr.Number(value=0, precision=0, label="Crop W")
                     se_crop_h = gr.Number(value=0, precision=0, label="Crop H")
-                with gr.Column():
-                    se_bright = gr.Slider(-1.0, 1.0, value=0.0, step=0.05,
-                                          label="5. Brightness")
-                    se_contrast = gr.Slider(0.0, 2.0, value=1.0, step=0.05,
-                                            label="5b. Contrast")
-                    se_sat = gr.Slider(0.0, 2.0, value=1.0, step=0.05,
-                                       label="5c. Saturation")
-                    se_gamma = gr.Slider(0.2, 3.0, value=1.0, step=0.05,
-                                         label="5d. Gamma")
-                    se_lut = gr.File(
-                        label="5e. LUT (.cube / .3dl) — optional",
-                        file_count="single",
+                    se_cut_on = gr.Checkbox(
+                        False,
+                        label="4b. Cut & mirror every N sec (1st normal, 2nd flipped...)",
                     )
+                    se_cut_sec = gr.Number(value=5, precision=0, label="Cut length (sec)")
+                with gr.Column():
+                    se_bright = gr.Slider(-1.0, 1.0, value=0.0, step=0.05, label="5. Brightness")
+                    se_contrast = gr.Slider(0.0, 2.0, value=1.0, step=0.05, label="5b. Contrast")
+                    se_sat = gr.Slider(0.0, 2.0, value=1.0, step=0.05, label="5c. Saturation")
+                    se_gamma = gr.Slider(0.2, 3.0, value=1.0, step=0.05, label="5d. Gamma")
+                    se_lut = gr.File(label="5e. LUT upload (.cube / .3dl)", file_count="single")
+                    se_lut_preset = gr.Dropdown(
+                        choices=_saved_files("lut", (".cube", ".3dl", ".csp", ".m3d", ".mga")),
+                        label="💾 Saved LUT (from repo, no upload)",
+                    )
+            with gr.Row():
+                with gr.Column():
+                    se_bgm_file = gr.File(label="6. Background music (optional)", file_count="single")
+                    se_bgm_preset = gr.Dropdown(
+                        choices=_saved_files("bgm", (".mp3", ".wav", ".ogg", ".m4a", ".flac", ".aac")),
+                        label="💾 Saved BGM (from repo, no upload)",
+                    )
+                    se_bgm_volume = gr.Slider(1, 60, value=15, step=1, label="BGM volume %")
+            with gr.Row():
+                se_preview_btn = gr.Button("👁️ Preview (crop/color/LUT on a frame)")
+                se_preview_img = gr.Image(label="Preview", type="filepath", interactive=False)
             with gr.Row():
                 se_button = gr.Button("✂️ Edit video", variant="primary")
                 se_output = gr.File(
-                    label="Edited video", file_count="single",
-                    interactive=False,
+                    label="Edited video", file_count="single", interactive=False
                 )
 
             def run_video_edit(video, zoom, res_w, res_h,
                                crop_on, crop_x, crop_y, crop_w, crop_h,
-                               bright, contrast, sat, gamma, lut):
+                               cut_on, cut_sec,
+                               bright, contrast, sat, gamma,
+                               lut, lut_preset,
+                               bgm_file, bgm_volume, bgm_preset):
                 import subprocess as _sp
                 if video is None:
                     return None
                 src = video.name if hasattr(video, "name") else str(video)
                 if not os.path.isfile(src):
                     return None
+                work = "/tmp/videdit_work.mp4"
+                if os.path.exists(work):
+                    os.remove(work)
+                p = _sp.run(["ffmpeg", "-y", "-i", src, "-c:v", "libx264",
+                             "-preset", "fast", "-crf", "18", "-c:a", "aac",
+                             work], capture_output=True, text=True)
+                if p.returncode != 0:
+                    return None
+
+                # Cut & mirror every N sec
+                if cut_on:
+                    _seg = max(1, int(cut_sec or 5))
+                    _dur = 0.0
+                    try:
+                        _dur = float(_sp.check_output(
+                            ["ffprobe", "-v", "error", "-show_entries",
+                             "format=duration", "-of",
+                             "default=noprint_wrappers=1:nokey=1", work],
+                            text=True).strip())
+                    except Exception:
+                        _dur = 0.0
+                    _n = max(1, int(_dur // _seg) + (1 if _dur % _seg > 0 else 0)) if _dur > 0 else 1
+                    _fc = []
+                    for _i in range(_n):
+                        _s = _i * _seg
+                        _e = min((_i + 1) * _seg, _dur) if _dur > 0 else (_i + 1) * _seg
+                        _fl = ",hflip" if (_i % 2 == 1) else ""
+                        _fc.append(
+                            f"[0:v]trim=start={_s}:end={_e},setpts=PTS-STARTPTS{_fl}[v{_i}]"
+                        )
+                        _fc.append(
+                            f"[0:a]atrim=start={_s}:end={_e},asetpts=PTS-STARTPTS[a{_i}]"
+                        )
+                    _ci = "".join(f"[v{_i}][a{_i}]" for _i in range(_n))
+                    _fc.append(f"{_ci}concat=n={_n}:v=1:a=1[ov][oa]")
+                    _tmp = work + ".cm.mp4"
+                    _cmd = ["ffmpeg", "-y", "-i", work, "-filter_complex",
+                            ";".join(_fc), "-map", "[ov]", "-map", "[oa]",
+                            "-c:v", "libx264", "-preset", "medium", "-crf", "20",
+                            "-c:a", "aac", "-b:a", "192k",
+                            "-movflags", "+faststart", _tmp]
+                    _r = _sp.run(_cmd, capture_output=True, text=True)
+                    if _r.returncode == 0:
+                        os.replace(_tmp, work)
+
+                # Crop / zoom / scale / color / LUT
                 try:
                     probe = _sp.check_output(
-                        ["ffprobe", "-v", "error",
-                         "-select_streams", "v:0",
+                        ["ffprobe", "-v", "error", "-select_streams", "v:0",
                          "-show_entries", "stream=width,height",
-                         "-of", "csv=p=0", src], text=True
-                    ).strip().split(",")
-                    src_w, src_h = int(probe[0]), int(probe[1])
+                         "-of", "csv=p=0", work], text=True).strip().split(",")
+                    sw, sh = int(probe[0]), int(probe[1])
                 except Exception:
-                    src_w = src_h = 0
-                vf_parts = []
-                if zoom and zoom > 100 and src_w and src_h:
-                    zw = max(2, int(src_w * 100.0 / zoom))
-                    zh = max(2, int(src_h * 100.0 / zoom))
-                    vf_parts.append(
-                        f"crop={zw}:{zh}:(in_w-{zw})/2:(in_h-{zh})/2"
-                    )
+                    sw = sh = 0
+                vf = []
+                if zoom and zoom > 100 and sw and sh:
+                    zw = max(2, int(sw * 100.0 / zoom))
+                    zh = max(2, int(sh * 100.0 / zoom))
+                    vf.append(f"crop={zw}:{zh}:(in_w-{zw})/2:(in_h-{zh})/2")
                 if crop_on and crop_w and crop_h:
-                    vf_parts.append(
+                    vf.append(
                         f"crop={int(crop_w)}:{int(crop_h)}:{int(crop_x)}:{int(crop_y)}"
                     )
                 ow = int(res_w) if res_w else -2
                 oh = int(res_h) if res_h else -2
-                vf_parts.append(f"scale={ow}:{oh}")
+                vf.append(f"scale={ow}:{oh}")
                 if bright or contrast != 1.0 or sat != 1.0 or gamma != 1.0:
-                    vf_parts.append(
+                    vf.append(
                         f"eq=brightness={bright:.3f}:contrast={contrast:.3f}:"
                         f"saturation={sat:.3f}:gamma={gamma:.3f}"
                     )
-                if lut is not None and hasattr(lut, "name"):
+                _lp = None
+                if lut_preset:
+                    _lp = os.path.join("assets", "lut", lut_preset)
+                elif lut is not None and hasattr(lut, "name"):
                     _lp = lut.name
-                    if os.path.isfile(_lp):
-                        vf_parts.append(f"lut3d=file='{_lp}'")
+                if _lp and os.path.isfile(_lp):
+                    vf.append(f"lut3d=file='{_lp}'")
+                if vf:
+                    _tmp = work + ".vf.mp4"
+                    _cmd = ["ffmpeg", "-y", "-i", work, "-vf", ",".join(vf),
+                            "-c:v", "libx264", "-preset", "medium", "-crf", "20",
+                            "-c:a", "aac", "-b:a", "192k",
+                            "-movflags", "+faststart", _tmp]
+                    _r = _sp.run(_cmd, capture_output=True, text=True)
+                    if _r.returncode == 0:
+                        os.replace(_tmp, work)
+                    else:
+                        return None
+
+                # Background music (flat, under voice)
+                _bgm = None
+                if bgm_preset:
+                    _bgm = os.path.join("assets", "bgm", bgm_preset)
+                elif bgm_file is not None and hasattr(bgm_file, "name"):
+                    _bgm = bgm_file.name
+                if _bgm and os.path.isfile(_bgm):
+                    try:
+                        _bdur = float(_sp.check_output(
+                            ["ffprobe", "-v", "error", "-show_entries",
+                             "format=duration", "-of",
+                             "default=noprint_wrappers=1:nokey=1", work],
+                            text=True).strip())
+                    except Exception:
+                        _bdur = 0.0
+                    _bvol = max(0.0, min(1.0, bgm_volume / 100.0))
+                    _tmp = work + ".bgm.mp4"
+                    _cmd = ["ffmpeg", "-y", "-i", work, "-i", _bgm,
+                            "-filter_complex",
+                            f"[1:a]volume={_bvol:.2f},atrim=0:{_bdur},asetpts=PTS-STARTPTS[bgm];"
+                            f"[0:a][bgm]amix=inputs=2:duration=first:normalize=0:dropout_transition=2[outa]",
+                            "-map", "0:v", "-map", "[outa]",
+                            "-c:v", "copy", "-c:a", "aac", "-b:a", "192k",
+                            "-movflags", "+faststart", _tmp]
+                    _r = _sp.run(_cmd, capture_output=True, text=True)
+                    if _r.returncode == 0:
+                        os.replace(_tmp, work)
+
                 out_dir = os.path.join(os.getcwd(), "outputs")
                 os.makedirs(out_dir, exist_ok=True)
                 base = os.path.splitext(os.path.basename(src))[0]
                 out = os.path.join(out_dir, f"{base}_edited.mp4")
                 if os.path.exists(out):
                     os.remove(out)
-                cmd = ["ffmpeg", "-y", "-i", src,
-                       "-vf", ",".join(vf_parts),
-                       "-c:v", "libx264", "-preset", "medium",
-                       "-crf", "20", "-c:a", "aac", "-b:a", "192k",
-                       "-movflags", "+faststart", out]
-                proc = _sp.run(cmd, capture_output=True, text=True)
-                if proc.returncode != 0:
-                    logger.error(f"Video Edit ffmpeg failed: {proc.stderr[-800:]}")
+                os.replace(work, out)
+                return out
+
+            def run_video_edit_preview(video, zoom, crop_on, crop_x, crop_y,
+                                       crop_w, crop_h, bright, contrast, sat,
+                                       gamma, lut, lut_preset):
+                import subprocess as _sp
+                if video is None:
+                    return None
+                src = video.name if hasattr(video, "name") else str(video)
+                if not os.path.isfile(src):
+                    return None
+                sw = sh = 0
+                try:
+                    probe = _sp.check_output(
+                        ["ffprobe", "-v", "error", "-select_streams", "v:0",
+                         "-show_entries", "stream=width,height",
+                         "-of", "csv=p=0", src], text=True).strip().split(",")
+                    sw, sh = int(probe[0]), int(probe[1])
+                except Exception:
+                    pass
+                vf = []
+                if zoom and zoom > 100 and sw and sh:
+                    zw = max(2, int(sw * 100.0 / zoom))
+                    zh = max(2, int(sh * 100.0 / zoom))
+                    vf.append(f"crop={zw}:{zh}:(in_w-{zw})/2:(in_h-{zh})/2")
+                if crop_on and crop_w and crop_h:
+                    vf.append(
+                        f"crop={int(crop_w)}:{int(crop_h)}:{int(crop_x)}:{int(crop_y)}"
+                    )
+                if bright or contrast != 1.0 or sat != 1.0 or gamma != 1.0:
+                    vf.append(
+                        f"eq=brightness={bright:.3f}:contrast={contrast:.3f}:"
+                        f"saturation={sat:.3f}:gamma={gamma:.3f}"
+                    )
+                _lp = None
+                if lut_preset:
+                    _lp = os.path.join("assets", "lut", lut_preset)
+                elif lut is not None and hasattr(lut, "name"):
+                    _lp = lut.name
+                if _lp and os.path.isfile(_lp):
+                    vf.append(f"lut3d=file='{_lp}'")
+                fv = ",".join(vf) if vf else "null"
+                out = "/tmp/videdit_preview.png"
+                if os.path.exists(out):
+                    os.remove(out)
+                cmd = ["ffmpeg", "-y", "-ss", "1", "-i", src, "-frames:v", "1",
+                       "-vf", fv, out]
+                p = _sp.run(cmd, capture_output=True, text=True)
+                if p.returncode != 0:
+                    cmd = ["ffmpeg", "-y", "-i", src, "-frames:v", "1",
+                           "-vf", fv, out]
+                    p = _sp.run(cmd, capture_output=True, text=True)
+                if p.returncode != 0:
                     return None
                 return out
 
             se_button.click(
                 run_video_edit,
                 inputs=[se_video_input, se_zoom, se_res_w, se_res_h,
-                        se_crop_on, se_crop_x, se_crop_y,
-                        se_crop_w, se_crop_h, se_bright, se_contrast,
-                        se_sat, se_gamma, se_lut],
+                        se_crop_on, se_crop_x, se_crop_y, se_crop_w, se_crop_h,
+                        se_cut_on, se_cut_sec,
+                        se_bright, se_contrast, se_sat, se_gamma,
+                        se_lut, se_lut_preset,
+                        se_bgm_file, se_bgm_volume, se_bgm_preset],
                 outputs=[se_output],
+            )
+            se_preview_btn.click(
+                run_video_edit_preview,
+                inputs=[se_video_input, se_zoom, se_crop_on, se_crop_x,
+                        se_crop_y, se_crop_w, se_crop_h, se_bright, se_contrast,
+                        se_sat, se_gamma, se_lut, se_lut_preset],
+                outputs=[se_preview_img],
             )
 
         with gr.Tab(lg_conf["tab_docs"]):
