@@ -1488,9 +1488,7 @@ class SoniTranslate(SoniTrCache):
                     "-filter_complex",
                     f"[1:a]volume={_bvol:.2f},atrim=0:{_bdur},"
                     f"asetpts=PTS-STARTPTS[bgm];"
-                    f"[0:a][bgm]sidechaincompress=threshold=0.01:ratio=8:"
-                    f"attack=20:release=600[ducked];"
-                    f"[0:a][ducked]amix=inputs=2:duration=first:"
+                    f"[0:a][bgm]amix=inputs=2:duration=first:"
                     f"normalize=0:dropout_transition=2[outa]",
                     "-map", "0:v", "-map", "[outa]",
                     "-c:v", "copy", "-c:a", "aac", "-b:a", "192k",
@@ -1499,7 +1497,7 @@ class SoniTranslate(SoniTrCache):
                 _rc = _sp.run(_cmd, capture_output=True, text=True)
                 if _rc.returncode == 0:
                     os.replace(_bm_out, video_output_file)
-                    logger.info("BGM mixed under dubbing (ducked to voice).")
+                    logger.info("BGM mixed under dubbing.")
                 else:
                     logger.error(f"BGM mix failed: {_rc.stderr[-400:]}")
             except Exception as _e:
@@ -2366,12 +2364,12 @@ def create_gui(theme, logs_in_gui=False):
                                     label="Cut length in seconds",
                                 )
                                 bgm_file = gr.File(
-                                    label="🎵 Background music (mixed under the voice, auto-ducked)",
+                                    label="🎵 Background music (mixed under the voice)",
                                     file_count="single",
                                 )
                                 bgm_volume = gr.Slider(
                                     1, 60, value=15, step=1,
-                                    label="BGM volume % (voice stays on top)",
+                                    label="BGM volume %",
                                 )
                                 preview_btn = gr.Button(
                                     "👁️ Preview (see this crop/filter on a frame)"
