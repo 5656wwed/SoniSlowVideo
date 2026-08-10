@@ -2329,8 +2329,8 @@ def create_gui(theme, logs_in_gui=False):
                             )
 
                             with gr.Accordion(
-                                "🎬 Crop / Filter (apply BEFORE dubbing)",
-                                open=False,
+                                "🎬 PIPELINE: Crop → LUT → Dub → BGM (edit applied before dubbing)",
+                                open=True,
                             ):
                                 edit_crop_enable = gr.Checkbox(
                                     False,
