@@ -468,6 +468,8 @@ class SoniTranslate(SoniTrCache):
         edit_lut=None,
         cut_mirror_enable=False,
         cut_mirror_sec=5,
+        bgm_file=None,
+        bgm_volume=15,
         is_gui=False,
         progress=gr.Progress(),
     ):
@@ -1462,6 +1464,47 @@ class SoniTranslate(SoniTrCache):
                         f'"{video_output_file}"'
                     )
 
+        # Mix background music under the dub (ducked so voice stays clear)
+        if (bgm_file is not None and hasattr(bgm_file, "name")
+                and os.path.isfile(bgm_file.name)
+                and os.path.isfile(video_output_file)
+                and not is_audio_file(media_file)):
+            try:
+                import subprocess as _sp
+                _bdur = 0.0
+                try:
+                    _bdur = float(_sp.check_output(
+                        ["ffprobe", "-v", "error",
+                         "-show_entries", "format=duration",
+                         "-of", "default=noprint_wrappers=1:nokey=1",
+                         video_output_file], text=True).strip())
+                except Exception:
+                    _bdur = 0.0
+                _bvol = max(0.0, min(1.0, bgm_volume / 100.0))
+                _bm_out = video_output_file + ".bgm.mp4"
+                _cmd = [
+                    "ffmpeg", "-y", "-i", video_output_file,
+                    "-i", bgm_file.name,
+                    "-filter_complex",
+                    f"[1:a]volume={_bvol:.2f},atrim=0:{_bdur},"
+                    f"asetpts=PTS-STARTPTS[bgm];"
+                    f"[0:a][bgm]sidechaincompress=threshold=0.01:ratio=8:"
+                    f"attack=20:release=600[ducked];"
+                    f"[0:a][ducked]amix=inputs=2:duration=first:"
+                    f"normalize=0:dropout_transition=2[outa]",
+                    "-map", "0:v", "-map", "[outa]",
+                    "-c:v", "copy", "-c:a", "aac", "-b:a", "192k",
+                    "-movflags", "+faststart", _bm_out,
+                ]
+                _rc = _sp.run(_cmd, capture_output=True, text=True)
+                if _rc.returncode == 0:
+                    os.replace(_bm_out, video_output_file)
+                    logger.info("BGM mixed under dubbing (ducked to voice).")
+                else:
+                    logger.error(f"BGM mix failed: {_rc.stderr[-400:]}")
+            except Exception as _e:
+                logger.error(f"BGM mix exception: {_e}")
+
         output = media_out(
             media_file,
             TRANSLATE_AUDIO_TO,
@@ -2321,6 +2364,14 @@ def create_gui(theme, logs_in_gui=False):
                                 cut_mirror_sec = gr.Number(
                                     value=5, precision=0,
                                     label="Cut length in seconds",
+                                )
+                                bgm_file = gr.File(
+                                    label="🎵 Background music (mixed under the voice, auto-ducked)",
+                                    file_count="single",
+                                )
+                                bgm_volume = gr.Slider(
+                                    1, 60, value=15, step=1,
+                                    label="BGM volume % (voice stays on top)",
                                 )
                                 preview_btn = gr.Button(
                                     "👁️ Preview (see this crop/filter on a frame)"
@@ -3322,6 +3373,8 @@ def create_gui(theme, logs_in_gui=False):
                 edit_lut,
                 cut_mirror_enable,
                 cut_mirror_sec,
+                bgm_file,
+                bgm_volume,
                 is_gui_dummy_check,
             ],
             outputs=video_output,
