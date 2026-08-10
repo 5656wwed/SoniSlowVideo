@@ -465,6 +465,7 @@ class SoniTranslate(SoniTrCache):
         edit_contrast=1.0,
         edit_sat=1.0,
         edit_gamma=1.0,
+        edit_lut=None,
         is_gui=False,
         progress=gr.Progress(),
     ):
@@ -696,6 +697,10 @@ class SoniTranslate(SoniTrCache):
                         f"contrast={edit_contrast:.3f}:"
                         f"saturation={edit_sat:.3f}:gamma={edit_gamma:.3f}"
                     )
+                if edit_lut is not None and hasattr(edit_lut, "name"):
+                    _lutp = edit_lut.name
+                    if os.path.isfile(_lutp):
+                        _vf.append(f"lut3d=file='{_lutp}'")
                 if _vf:
                     _tmp = base_video_file + ".edit.mp4"
                     _cmd = [
@@ -2257,6 +2262,10 @@ def create_gui(theme, logs_in_gui=False):
                                     0.2, 3.0, value=1.0, step=0.05,
                                     label="Gamma",
                                 )
+                                edit_lut = gr.File(
+                                    label="LUT (.cube / .3dl) — optional color grade",
+                                    file_count="single",
+                                )
 
                 with gr.Column(variant="compact"):
                     edit_sub_check = gr.Checkbox(
@@ -2373,61 +2382,63 @@ def create_gui(theme, logs_in_gui=False):
             gr.Markdown(
                 "Upload any video (or use your dubbed output). "
                 "Crop / resize / zoom + color grade (brightness, contrast, "
-                "saturation, gamma). One button, then grab the file."
+                "saturation, gamma) + LUT. One button, then grab the file."
             )
             with gr.Row():
                 with gr.Column():
-                    edit_video_input = gr.File(
+                    se_video_input = gr.File(
                         label="1. Upload video (.mp4)",
                         file_count="single",
                     )
-                    edit_zoom = gr.Slider(
+                    se_zoom = gr.Slider(
                         100, 250, value=100, step=1,
                         label="2. Zoom (100 = none, 150 = 1.5x center)",
                     )
-                    edit_res_w = gr.Number(
+                    se_res_w = gr.Number(
                         value=0, precision=0,
                         label="3. Output width (0 = keep original)",
                     )
-                    edit_res_h = gr.Number(
+                    se_res_h = gr.Number(
                         value=0, precision=0,
                         label="3b. Output height (0 = keep original)",
                     )
                 with gr.Column():
-                    edit_crop_on = gr.Checkbox(
+                    se_crop_on = gr.Checkbox(
                         False, label="4. Enable crop region"
                     )
-                    edit_crop_x = gr.Number(value=0, precision=0, label="Crop X")
-                    edit_crop_y = gr.Number(value=0, precision=0, label="Crop Y")
-                    edit_crop_w = gr.Number(value=0, precision=0, label="Crop W")
-                    edit_crop_h = gr.Number(value=0, precision=0, label="Crop H")
+                    se_crop_x = gr.Number(value=0, precision=0, label="Crop X")
+                    se_crop_y = gr.Number(value=0, precision=0, label="Crop Y")
+                    se_crop_w = gr.Number(value=0, precision=0, label="Crop W")
+                    se_crop_h = gr.Number(value=0, precision=0, label="Crop H")
                 with gr.Column():
-                    edit_bright = gr.Slider(-1.0, 1.0, value=0.0, step=0.05,
-                                            label="5. Brightness")
-                    edit_contrast = gr.Slider(0.0, 2.0, value=1.0, step=0.05,
-                                              label="5b. Contrast")
-                    edit_sat = gr.Slider(0.0, 2.0, value=1.0, step=0.05,
-                                         label="5c. Saturation")
-                    edit_gamma = gr.Slider(0.2, 3.0, value=1.0, step=0.05,
-                                           label="5d. Gamma")
+                    se_bright = gr.Slider(-1.0, 1.0, value=0.0, step=0.05,
+                                          label="5. Brightness")
+                    se_contrast = gr.Slider(0.0, 2.0, value=1.0, step=0.05,
+                                            label="5b. Contrast")
+                    se_sat = gr.Slider(0.0, 2.0, value=1.0, step=0.05,
+                                       label="5c. Saturation")
+                    se_gamma = gr.Slider(0.2, 3.0, value=1.0, step=0.05,
+                                         label="5d. Gamma")
+                    se_lut = gr.File(
+                        label="5e. LUT (.cube / .3dl) — optional",
+                        file_count="single",
+                    )
             with gr.Row():
-                edit_button = gr.Button("✂️ Edit video", variant="primary")
-                edit_output = gr.File(
+                se_button = gr.Button("✂️ Edit video", variant="primary")
+                se_output = gr.File(
                     label="Edited video", file_count="single",
                     interactive=False,
                 )
 
             def run_video_edit(video, zoom, res_w, res_h,
                                crop_on, crop_x, crop_y, crop_w, crop_h,
-                               bright, contrast, sat, gamma):
+                               bright, contrast, sat, gamma, lut):
                 import subprocess as _sp
-                import shutil as _sh
                 if video is None:
                     return None
                 src = video.name if hasattr(video, "name") else str(video)
                 if not os.path.isfile(src):
                     return None
-                # Probe source size
                 try:
                     probe = _sp.check_output(
                         ["ffprobe", "-v", "error",
@@ -2457,6 +2468,10 @@ def create_gui(theme, logs_in_gui=False):
                         f"eq=brightness={bright:.3f}:contrast={contrast:.3f}:"
                         f"saturation={sat:.3f}:gamma={gamma:.3f}"
                     )
+                if lut is not None and hasattr(lut, "name"):
+                    _lp = lut.name
+                    if os.path.isfile(_lp):
+                        vf_parts.append(f"lut3d=file='{_lp}'")
                 out_dir = os.path.join(os.getcwd(), "outputs")
                 os.makedirs(out_dir, exist_ok=True)
                 base = os.path.splitext(os.path.basename(src))[0]
@@ -2474,13 +2489,13 @@ def create_gui(theme, logs_in_gui=False):
                     return None
                 return out
 
-            edit_button.click(
+            se_button.click(
                 run_video_edit,
-                inputs=[edit_video_input, edit_zoom, edit_res_w, edit_res_h,
-                        edit_crop_on, edit_crop_x, edit_crop_y,
-                        edit_crop_w, edit_crop_h, edit_bright, edit_contrast,
-                        edit_sat, edit_gamma],
-                outputs=[edit_output],
+                inputs=[se_video_input, se_zoom, se_res_w, se_res_h,
+                        se_crop_on, se_crop_x, se_crop_y,
+                        se_crop_w, se_crop_h, se_bright, se_contrast,
+                        se_sat, se_gamma, se_lut],
+                outputs=[se_output],
             )
 
         with gr.Tab(lg_conf["tab_docs"]):
@@ -3165,6 +3180,7 @@ def create_gui(theme, logs_in_gui=False):
                 edit_contrast,
                 edit_sat,
                 edit_gamma,
+                edit_lut,
                 is_gui_dummy_check,
             ],
             outputs=video_output,
