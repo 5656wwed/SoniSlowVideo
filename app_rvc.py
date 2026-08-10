@@ -466,6 +466,8 @@ class SoniTranslate(SoniTrCache):
         edit_sat=1.0,
         edit_gamma=1.0,
         edit_lut=None,
+        cut_mirror_enable=False,
+        cut_mirror_sec=5,
         is_gui=False,
         progress=gr.Progress(),
     ):
@@ -666,56 +668,101 @@ class SoniTranslate(SoniTrCache):
                     )
                 logger.debug("Set file complete.")
 
-            # Apply crop/filter to the video BEFORE dubbing (if enabled)
-            if edit_crop_enable and not is_audio_file(media_file):
+            # Apply cut/mirror + crop/filter to the video BEFORE dubbing
+            if (edit_crop_enable or cut_mirror_enable) and not is_audio_file(media_file):
                 import subprocess as _sp
-                try:
-                    _probe = _sp.check_output(
-                        ["ffprobe", "-v", "error", "-select_streams", "v:0",
-                         "-show_entries", "stream=width,height",
-                         "-of", "csv=p=0", base_video_file],
-                        text=True).strip().split(",")
-                    _ew, _eh = int(_probe[0]), int(_probe[1])
-                except Exception:
-                    _ew = _eh = 0
-                _vf = []
-                if edit_zoom and edit_zoom > 100 and _ew and _eh:
-                    _zw = max(2, int(_ew * 100.0 / edit_zoom))
-                    _zh = max(2, int(_eh * 100.0 / edit_zoom))
-                    _vf.append(
-                        f"crop={_zw}:{_zh}:(in_w-{_zw})/2:(in_h-{_zh})/2"
-                    )
-                if edit_crop_w and edit_crop_h:
-                    _vf.append(
-                        f"crop={int(edit_crop_w)}:{int(edit_crop_h)}:"
-                        f"{int(edit_crop_x)}:{int(edit_crop_y)}"
-                    )
-                if (edit_bright or edit_contrast != 1.0
-                        or edit_sat != 1.0 or edit_gamma != 1.0):
-                    _vf.append(
-                        f"eq=brightness={edit_bright:.3f}:"
-                        f"contrast={edit_contrast:.3f}:"
-                        f"saturation={edit_sat:.3f}:gamma={edit_gamma:.3f}"
-                    )
-                if edit_lut is not None and hasattr(edit_lut, "name"):
-                    _lutp = edit_lut.name
-                    if os.path.isfile(_lutp):
-                        _vf.append(f"lut3d=file='{_lutp}'")
-                if _vf:
-                    _tmp = base_video_file + ".edit.mp4"
+
+                # --- Pass 1: cut every N sec + mirror alternate chunks ---
+                if cut_mirror_enable:
+                    _seg = max(1, int(cut_mirror_sec or 5))
+                    _dur = 0.0
+                    try:
+                        _dur = float(_sp.check_output(
+                            ["ffprobe", "-v", "error",
+                             "-show_entries", "format=duration",
+                             "-of", "default=noprint_wrappers=1:nokey=1",
+                             base_video_file], text=True).strip())
+                    except Exception:
+                        _dur = 0.0
+                    _n = max(1, int(_dur // _seg) + (1 if _dur % _seg > 0 else 0)) if _dur > 0 else 1
+                    _fc = []
+                    for _i in range(_n):
+                        _s = _i * _seg
+                        _e = min((_i + 1) * _seg, _dur) if _dur > 0 else (_i + 1) * _seg
+                        _fl = ",hflip" if (_i % 2 == 1) else ""
+                        _fc.append(
+                            f"[0:v]trim=start={_s}:end={_e},setpts=PTS-STARTPTS{_fl}[v{_i}]"
+                        )
+                        _fc.append(
+                            f"[0:a]atrim=start={_s}:end={_e},asetpts=PTS-STARTPTS[a{_i}]"
+                        )
+                    _ci = "".join(f"[v{_i}][a{_i}]" for _i in range(_n))
+                    _fc.append(f"{_ci}concat=n={_n}:v=1:a=1[ov][oa]")
+                    _cm_out = base_video_file + ".cm.mp4"
                     _cmd = [
                         "ffmpeg", "-y", "-i", base_video_file,
-                        "-vf", ",".join(_vf),
+                        "-filter_complex", ";".join(_fc),
+                        "-map", "[ov]", "-map", "[oa]",
                         "-c:v", "libx264", "-preset", "medium", "-crf", "20",
                         "-c:a", "aac", "-b:a", "192k",
-                        "-movflags", "+faststart", _tmp,
+                        "-movflags", "+faststart", _cm_out,
                     ]
                     _rc = _sp.run(_cmd, capture_output=True, text=True)
                     if _rc.returncode == 0:
-                        os.replace(_tmp, base_video_file)
-                        logger.info("Pre-dub crop/filter applied to video.")
+                        os.replace(_cm_out, base_video_file)
+                        logger.info(f"Cut & mirror every {_seg}s applied.")
                     else:
-                        logger.error(
+                        logger.error(f"Cut/mirror failed: {_rc.stderr[-400:]}")
+
+                # --- Pass 2: crop/filter ---
+                if edit_crop_enable:
+                    try:
+                        _probe = _sp.check_output(
+                            ["ffprobe", "-v", "error", "-select_streams", "v:0",
+                             "-show_entries", "stream=width,height",
+                             "-of", "csv=p=0", base_video_file],
+                            text=True).strip().split(",")
+                        _ew, _eh = int(_probe[0]), int(_probe[1])
+                    except Exception:
+                        _ew = _eh = 0
+                    _vf = []
+                    if edit_zoom and edit_zoom > 100 and _ew and _eh:
+                        _zw = max(2, int(_ew * 100.0 / edit_zoom))
+                        _zh = max(2, int(_eh * 100.0 / edit_zoom))
+                        _vf.append(
+                            f"crop={_zw}:{_zh}:(in_w-{_zw})/2:(in_h-{_zh})/2"
+                        )
+                    if edit_crop_w and edit_crop_h:
+                        _vf.append(
+                            f"crop={int(edit_crop_w)}:{int(edit_crop_h)}:"
+                            f"{int(edit_crop_x)}:{int(edit_crop_y)}"
+                        )
+                    if (edit_bright or edit_contrast != 1.0
+                            or edit_sat != 1.0 or edit_gamma != 1.0):
+                        _vf.append(
+                            f"eq=brightness={edit_bright:.3f}:"
+                            f"contrast={edit_contrast:.3f}:"
+                            f"saturation={edit_sat:.3f}:gamma={edit_gamma:.3f}"
+                        )
+                    if edit_lut is not None and hasattr(edit_lut, "name"):
+                        _lutp = edit_lut.name
+                        if os.path.isfile(_lutp):
+                            _vf.append(f"lut3d=file='{_lutp}'")
+                    if _vf:
+                        _tmp = base_video_file + ".edit.mp4"
+                        _cmd = [
+                            "ffmpeg", "-y", "-i", base_video_file,
+                            "-vf", ",".join(_vf),
+                            "-c:v", "libx264", "-preset", "medium", "-crf", "20",
+                            "-c:a", "aac", "-b:a", "192k",
+                            "-movflags", "+faststart", _tmp,
+                        ]
+                        _rc = _sp.run(_cmd, capture_output=True, text=True)
+                        if _rc.returncode == 0:
+                            os.replace(_tmp, base_video_file)
+                            logger.info("Pre-dub crop/filter applied to video.")
+                        else:
+                            logger.error(
                             f"Pre-dub edit failed: {_rc.stderr[-400:]}"
                         )
 
@@ -2266,6 +2313,15 @@ def create_gui(theme, logs_in_gui=False):
                                     label="LUT (.cube / .3dl) — optional color grade",
                                     file_count="single",
                                 )
+                                cut_mirror_enable = gr.Checkbox(
+                                    False,
+                                    label="✂️ Cut every N sec & mirror alternate chunks "
+                                          "(1st normal, 2nd flipped, 3rd normal...)",
+                                )
+                                cut_mirror_sec = gr.Number(
+                                    value=5, precision=0,
+                                    label="Cut length in seconds",
+                                )
                                 preview_btn = gr.Button(
                                     "👁️ Preview (see this crop/filter on a frame)"
                                 )
@@ -3264,6 +3320,8 @@ def create_gui(theme, logs_in_gui=False):
                 edit_sat,
                 edit_gamma,
                 edit_lut,
+                cut_mirror_enable,
+                cut_mirror_sec,
                 is_gui_dummy_check,
             ],
             outputs=video_output,
