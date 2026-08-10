@@ -1829,6 +1829,135 @@ def create_gui(theme, logs_in_gui=False):
         gr.Markdown(title)
         gr.Markdown(lg_conf["description"])
 
+        with gr.Tab("▶ Pipeline"):
+            gr.Markdown(
+                "### 🎬 Crop → LUT → Dub → BGM\n"
+                "Run everything in one clean flow. Upload your video + SRT, "
+                "set your edit, pick a voice, add music, then hit Run."
+            )
+            with gr.Column():
+                gr.Markdown("**Step 1 — Upload**")
+                pl_video = gr.File(
+                    label="Video (.mp4)", file_count="single", type="filepath"
+                )
+                pl_srt = gr.File(
+                    label="SRT (subtitles — used as-is, no transcription)",
+                    file_count="single", type="filepath",
+                )
+
+                gr.Markdown("**Step 2 — Crop / Zoom**")
+                pl_zoom = gr.Slider(100, 250, value=100, step=1,
+                                    label="Zoom (100 = none)")
+                pl_crop_on = gr.Checkbox(False, label="Enable crop region")
+                with gr.Row():
+                    pl_crop_x = gr.Number(value=0, precision=0, label="Crop X")
+                    pl_crop_y = gr.Number(value=0, precision=0, label="Crop Y")
+                    pl_crop_w = gr.Number(value=0, precision=0, label="Crop W")
+                    pl_crop_h = gr.Number(value=0, precision=0, label="Crop H")
+
+                gr.Markdown("**Step 3 — LUT & Color**")
+                pl_lut = gr.File(label="LUT upload (.cube / .3dl)",
+                                 file_count="single")
+                pl_lut_preset = gr.Dropdown(
+                    choices=_saved_files("lut", (".cube", ".3dl", ".csp", ".m3d", ".mga")),
+                    label="💾 Saved LUT (from repo)", info="",
+                )
+                with gr.Row():
+                    pl_bright = gr.Slider(-1.0, 1.0, value=0.0, step=0.05, label="Brightness")
+                    pl_contrast = gr.Slider(0.0, 2.0, value=1.0, step=0.05, label="Contrast")
+                    pl_sat = gr.Slider(0.0, 2.0, value=1.0, step=0.05, label="Saturation")
+                    pl_gamma = gr.Slider(0.2, 3.0, value=1.0, step=0.05, label="Gamma")
+
+                gr.Markdown("**Step 4 — Cut & Mirror** (optional)")
+                pl_cut_on = gr.Checkbox(
+                    False, label="Cut & mirror every N sec (1st normal, 2nd flipped...)"
+                )
+                pl_cut_sec = gr.Number(value=5, precision=0, label="Cut length (sec)")
+
+                gr.Markdown("**Step 5 — Voice & Dubbing**")
+                pl_voice = gr.Dropdown(
+                    SoniTr.tts_info.tts_list(),
+                    value="en-US-EmmaMultilingualNeural-Female",
+                    label="Voice",
+                )
+                with gr.Row():
+                    pl_src_lang = gr.Dropdown(
+                        LANGUAGES_LIST, value=LANGUAGES_LIST[0],
+                        label="Source language (your SRT's language)",
+                    )
+                    pl_tgt_lang = gr.Dropdown(
+                        LANGUAGES_LIST[1:], value="English (en)",
+                        label="Target language",
+                    )
+
+                gr.Markdown("**Step 6 — Background Music** (optional)")
+                pl_bgm = gr.File(label="Music upload", file_count="single")
+                pl_bgm_preset = gr.Dropdown(
+                    choices=_saved_files("bgm", (".mp3", ".wav", ".ogg", ".m4a", ".flac", ".aac")),
+                    label="💾 Saved BGM (from repo)", info="",
+                )
+                pl_bgm_vol = gr.Slider(1, 60, value=15, step=1, label="BGM volume %")
+
+                pl_run = gr.Button("▶ Run Pipeline", variant="primary")
+                pl_output = gr.File(label="Finished video", file_count="single",
+                                    interactive=False)
+
+            def run_pipeline(video, srt, zoom, crop_on, crop_x, crop_y, crop_w,
+                             crop_h, lut, lut_preset, bright, contrast, sat,
+                             gamma, cut_on, cut_sec, voice, src_lang, tgt_lang,
+                             bgm, bgm_preset, bgm_vol):
+                if video is None:
+                    gr.Warning("Upload a video first.")
+                    return None
+                _lut = None
+                if lut_preset:
+                    _lut = os.path.join("assets", "lut", lut_preset)
+                _bgm = None
+                if bgm_preset:
+                    _bgm = os.path.join("assets", "bgm", bgm_preset)
+                _edit = (zoom > 100 or crop_on or bright or contrast != 1.0
+                         or sat != 1.0 or gamma != 1.0 or lut is not None
+                         or lut_preset)
+                srt_path = srt.name if srt is not None and hasattr(srt, "name") else None
+                return SoniTr.multilingual_media_conversion(
+                    media_file=video,
+                    target_language=tgt_lang,
+                    origin_language=src_lang,
+                    tts_voice00=voice,
+                    min_speakers=1,
+                    max_speakers=1,
+                    subtitle_file=srt_path,
+                    output_type="video (mp4)",
+                    edit_crop_enable=_edit,
+                    edit_zoom=zoom,
+                    edit_crop_x=crop_x,
+                    edit_crop_y=crop_y,
+                    edit_crop_w=crop_w,
+                    edit_crop_h=crop_h,
+                    edit_bright=bright,
+                    edit_contrast=contrast,
+                    edit_sat=sat,
+                    edit_gamma=gamma,
+                    edit_lut=lut,
+                    lut_preset=_lut if lut_preset else None,
+                    cut_mirror_enable=cut_on,
+                    cut_mirror_sec=cut_sec,
+                    bgm_file=bgm,
+                    bgm_preset=_bgm if bgm_preset else None,
+                    bgm_volume=bgm_vol,
+                    enable_cache=True,
+                )
+
+            pl_run.click(
+                run_pipeline,
+                inputs=[pl_video, pl_srt, pl_zoom, pl_crop_on, pl_crop_x,
+                        pl_crop_y, pl_crop_w, pl_crop_h, pl_lut, pl_lut_preset,
+                        pl_bright, pl_contrast, pl_sat, pl_gamma, pl_cut_on,
+                        pl_cut_sec, pl_voice, pl_src_lang, pl_tgt_lang,
+                        pl_bgm, pl_bgm_preset, pl_bgm_vol],
+                outputs=[pl_output],
+            )
+
         with gr.Tab(lg_conf["tab_translate"]):
             with gr.Row():
                 with gr.Column():
