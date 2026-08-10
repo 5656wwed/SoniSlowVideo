@@ -2267,6 +2267,120 @@ def create_gui(theme, logs_in_gui=False):
                         cache_examples=False,
                     )
 
+        with gr.Tab("🎬 Video Edit"):
+            gr.Markdown(
+                "Upload any video (or use your dubbed output). "
+                "Crop / resize / zoom + color grade (brightness, contrast, "
+                "saturation, gamma). One button, then grab the file."
+            )
+            with gr.Row():
+                with gr.Column():
+                    edit_video_input = gr.File(
+                        label="1. Upload video (.mp4)",
+                        file_count="single",
+                    )
+                    edit_zoom = gr.Slider(
+                        100, 250, value=100, step=1,
+                        label="2. Zoom (100 = none, 150 = 1.5x center)",
+                    )
+                    edit_res_w = gr.Number(
+                        value=0, precision=0,
+                        label="3. Output width (0 = keep original)",
+                    )
+                    edit_res_h = gr.Number(
+                        value=0, precision=0,
+                        label="3b. Output height (0 = keep original)",
+                    )
+                with gr.Column():
+                    edit_crop_on = gr.Checkbox(
+                        False, label="4. Enable crop region"
+                    )
+                    edit_crop_x = gr.Number(value=0, precision=0, label="Crop X")
+                    edit_crop_y = gr.Number(value=0, precision=0, label="Crop Y")
+                    edit_crop_w = gr.Number(value=0, precision=0, label="Crop W")
+                    edit_crop_h = gr.Number(value=0, precision=0, label="Crop H")
+                with gr.Column():
+                    edit_bright = gr.Slider(-1.0, 1.0, value=0.0, step=0.05,
+                                            label="5. Brightness")
+                    edit_contrast = gr.Slider(0.0, 2.0, value=1.0, step=0.05,
+                                              label="5b. Contrast")
+                    edit_sat = gr.Slider(0.0, 2.0, value=1.0, step=0.05,
+                                         label="5c. Saturation")
+                    edit_gamma = gr.Slider(0.2, 3.0, value=1.0, step=0.05,
+                                           label="5d. Gamma")
+            with gr.Row():
+                edit_button = gr.Button("✂️ Edit video", variant="primary")
+                edit_output = gr.File(
+                    label="Edited video", file_count="single",
+                    interactive=False,
+                )
+
+            def run_video_edit(video, zoom, res_w, res_h,
+                               crop_on, crop_x, crop_y, crop_w, crop_h,
+                               bright, contrast, sat, gamma):
+                import subprocess as _sp
+                import shutil as _sh
+                if video is None:
+                    return None
+                src = video.name if hasattr(video, "name") else str(video)
+                if not os.path.isfile(src):
+                    return None
+                # Probe source size
+                try:
+                    probe = _sp.check_output(
+                        ["ffprobe", "-v", "error",
+                         "-select_streams", "v:0",
+                         "-show_entries", "stream=width,height",
+                         "-of", "csv=p=0", src], text=True
+                    ).strip().split(",")
+                    src_w, src_h = int(probe[0]), int(probe[1])
+                except Exception:
+                    src_w = src_h = 0
+                vf_parts = []
+                if zoom and zoom > 100 and src_w and src_h:
+                    zw = max(2, int(src_w * 100.0 / zoom))
+                    zh = max(2, int(src_h * 100.0 / zoom))
+                    vf_parts.append(
+                        f"crop={zw}:{zh}:(in_w-{zw})/2:(in_h-{zh})/2"
+                    )
+                if crop_on and crop_w and crop_h:
+                    vf_parts.append(
+                        f"crop={int(crop_w)}:{int(crop_h)}:{int(crop_x)}:{int(crop_y)}"
+                    )
+                ow = int(res_w) if res_w else -2
+                oh = int(res_h) if res_h else -2
+                vf_parts.append(f"scale={ow}:{oh}")
+                if bright or contrast != 1.0 or sat != 1.0 or gamma != 1.0:
+                    vf_parts.append(
+                        f"eq=brightness={bright:.3f}:contrast={contrast:.3f}:"
+                        f"saturation={sat:.3f}:gamma={gamma:.3f}"
+                    )
+                out_dir = os.path.join(os.getcwd(), "outputs")
+                os.makedirs(out_dir, exist_ok=True)
+                base = os.path.splitext(os.path.basename(src))[0]
+                out = os.path.join(out_dir, f"{base}_edited.mp4")
+                if os.path.exists(out):
+                    os.remove(out)
+                cmd = ["ffmpeg", "-y", "-i", src,
+                       "-vf", ",".join(vf_parts),
+                       "-c:v", "libx264", "-preset", "medium",
+                       "-crf", "20", "-c:a", "aac", "-b:a", "192k",
+                       "-movflags", "+faststart", out]
+                proc = _sp.run(cmd, capture_output=True, text=True)
+                if proc.returncode != 0:
+                    logger.error(f"Video Edit ffmpeg failed: {proc.stderr[-800:]}")
+                    return None
+                return out
+
+            edit_button.click(
+                run_video_edit,
+                inputs=[edit_video_input, edit_zoom, edit_res_w, edit_res_h,
+                        edit_crop_on, edit_crop_x, edit_crop_y,
+                        edit_crop_w, edit_crop_h, edit_bright, edit_contrast,
+                        edit_sat, edit_gamma],
+                outputs=[edit_output],
+            )
+
         with gr.Tab(lg_conf["tab_docs"]):
             with gr.Column():
                 with gr.Accordion("Docs", open=True):
