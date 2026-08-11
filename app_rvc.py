@@ -1907,8 +1907,61 @@ _SETTINGS_KEYS = [
 ]
 
 
+def _build_theme():
+    """Dark theme matching the preview (navy/charcoal + purple/pink accent)."""
+    try:
+        import gradio as gr
+        base = gr.themes.Base(
+            primary_hue="violet",
+            neutral_hue="slate",
+        )
+        return base.set(
+            body_background_fill="#0b0e14",
+            body_background_fill_dark="#0b0e14",
+            background_fill_primary="#0b0e14",
+            background_fill_primary_dark="#0b0e14",
+            background_fill_secondary="#0f131c",
+            background_fill_secondary_dark="#0f131c",
+            body_text_color="#eef2f9",
+            body_text_color_dark="#eef2f9",
+            block_background_fill="#131722",
+            block_background_fill_dark="#131722",
+            block_border_color="#232b3d",
+            block_border_color_dark="#232b3d",
+            block_title_text_color="#eef2f9",
+            block_title_text_color_dark="#eef2f9",
+            input_background_fill="#1a2030",
+            input_background_fill_dark="#1a2030",
+            input_border_color="#2a3350",
+            input_border_color_dark="#2a3350",
+            button_primary_background_fill="#7c6cff",
+            button_primary_background_fill_dark="#7c6cff",
+            button_primary_background_fill_hover="#6a5ae0",
+            button_primary_background_fill_hover_dark="#6a5ae0",
+            button_primary_text_color="#ffffff",
+            button_primary_text_color_dark="#ffffff",
+            button_secondary_background_fill="#1a2030",
+            button_secondary_background_fill_dark="#1a2030",
+            button_secondary_text_color="#eef2f9",
+            button_secondary_text_color_dark="#eef2f9",
+        )
+    except Exception:
+        try:
+            import gradio as gr
+            return gr.themes.Soft()
+        except Exception:
+            return None
+
+
+_APP_CSS = """
+.gradio-container { max-width: 1080px !important; margin: 0 auto; }
+body { background: #0b0e14 !important; }
+h1, h2, h3 { color: #eef2f9 !important; }
+footer { display: none !important; }
+"""
+
 def create_gui(theme, logs_in_gui=False):
-    with gr.Blocks(theme=theme) as app:
+    with gr.Blocks(theme=_build_theme() or theme, css=_APP_CSS) as app:
         gr.Markdown(title)
         gr.Markdown(lg_conf["description"])
 
