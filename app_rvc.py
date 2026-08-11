@@ -460,6 +460,7 @@ class SoniTranslate(SoniTrCache):
         caption_box=True,
         caption_pos="lower",
         caption_karaoke=True,
+        caption_font="Arial Black",
         enable_cache=True,
         custom_voices=False,
         custom_voices_workers=1,
@@ -1354,6 +1355,7 @@ class SoniTranslate(SoniTrCache):
                             hl_color=caption_hl or "#FFD400",
                             box=caption_box, pos=caption_pos or "lower",
                             karaoke=caption_karaoke,
+                            font=caption_font or "Arial Black",
                             play_w=_pw, play_h=_ph,
                         )
                         command = (
@@ -1965,6 +1967,13 @@ def create_gui(theme, logs_in_gui=False):
                 pl_caps_karaoke = gr.Checkbox(
                     True, label="Word-by-word pop (highlight each word as spoken)"
                 )
+                pl_caps_font = gr.Dropdown(
+                    [
+                        "Arial Black", "Impact", "Verdana", "Georgia",
+                        "Times New Roman", "Courier New", "Trebuchet MS",
+                    ],
+                    value="Arial Black", label="Caption font",
+                )
 
                 gr.Markdown("**Step 6 — Voice & Dubbing**")
                 pl_voice = gr.Dropdown(
@@ -2010,7 +2019,7 @@ def create_gui(theme, logs_in_gui=False):
                                crop_h, lut, lut_preset, bright, contrast, sat,
                                gamma, hue, cut_on, cut_sec, caps_on, caps_size,
                                caps_pos, caps_color, caps_hl, caps_box,
-                               caps_karaoke):
+                               caps_karaoke, caps_font):
                 if video is None:
                     gr.Warning("Upload a video first.")
                     return None
@@ -2137,6 +2146,7 @@ def create_gui(theme, logs_in_gui=False):
                                 hl_color=caps_hl or "#FFD400",
                                 box=bool(caps_box), pos=caps_pos or "lower",
                                 karaoke=bool(caps_karaoke),
+                                font=caps_font or "Arial Black",
                                 play_w=_pw, play_h=_ph,
                             )
                             _fin = "/tmp/pl_preview_cap_out.mp4"
@@ -2160,7 +2170,7 @@ def create_gui(theme, logs_in_gui=False):
                              crop_h, lut, lut_preset, bright, contrast, sat,
                              gamma, hue, cut_on, cut_sec, caps_on, caps_size,
                              caps_pos, caps_color, caps_hl, caps_box,
-                             caps_karaoke, voice, src_lang, tgt_lang,
+                             caps_karaoke, caps_font, voice, src_lang, tgt_lang,
                              bgm, bgm_preset, bgm_vol):
                 if video is None:
                     gr.Warning("Upload a video first.")
@@ -2205,6 +2215,7 @@ def create_gui(theme, logs_in_gui=False):
                     caption_box=bool(caps_box),
                     caption_pos=caps_pos,
                     caption_karaoke=bool(caps_karaoke),
+                    caption_font=caps_font,
                     cut_mirror_sec=cut_sec,
                     bgm_file=bgm,
                     bgm_preset=_bgm if bgm_preset else None,
@@ -2378,7 +2389,7 @@ def create_gui(theme, logs_in_gui=False):
                         pl_bright, pl_contrast, pl_sat, pl_gamma, pl_hue,
                         pl_cut_on, pl_cut_sec, pl_caps_on, pl_caps_size,
                         pl_caps_pos, pl_caps_color, pl_caps_hl, pl_caps_box,
-                        pl_caps_karaoke, pl_voice, pl_src_lang, pl_tgt_lang,
+                        pl_caps_karaoke, pl_caps_font, pl_voice, pl_src_lang, pl_tgt_lang,
                         pl_bgm, pl_bgm_preset, pl_bgm_vol],
                 outputs=[pl_output],
             )
@@ -2401,7 +2412,7 @@ def create_gui(theme, logs_in_gui=False):
                         pl_bright, pl_contrast, pl_sat, pl_gamma, pl_hue,
                         pl_cut_on, pl_cut_sec, pl_caps_on, pl_caps_size,
                         pl_caps_pos, pl_caps_color, pl_caps_hl, pl_caps_box,
-                        pl_caps_karaoke],
+                        pl_caps_karaoke, pl_caps_font],
                 outputs=[pl_preview_video],
             )
 

@@ -61,7 +61,7 @@ def _esc(text):
     return text.replace("{", "(").replace("}", ")")
 
 
-def _style_line(name, size, color, box, pos, play_h):
+def _style_line(name, size, color, box, pos, play_h, font="Arial Black"):
     al = {"lower": 2, "center": 5, "top": 8}[pos]
     if box:
         border = 3  # opaque box behind text
@@ -74,14 +74,14 @@ def _style_line(name, size, color, box, pos, play_h):
         shadow = 2
         back = "&H80000000"
     m = max(30, int(play_h * 0.06)) if size <= 0 else size
-    return (f"Style: {name},Arial Black,{m},{_ass_color(color)},{_ass_color(color)},"
+    return (f"Style: {name},{font},{m},{_ass_color(color)},{_ass_color(color)},"
             f"&H00000000,{back},1,0,0,0,100,100,0,0,{border},{outline},{shadow},"
             f"{al},40,40,40,1")
 
 
 def make_caption_ass(srt_path, ass_path, font_size_px=0, text_color="#FFFFFF",
                      hl_color="#FFD400", box=True, pos="lower", karaoke=True,
-                     play_w=1280, play_h=720):
+                     font="Arial Black", play_w=1280, play_h=720):
     cues = _parse_srt(srt_path)
     L = []
     L.append("[Script Info]")
@@ -96,8 +96,8 @@ def make_caption_ass(srt_path, ass_path, font_size_px=0, text_color="#FFFFFF",
              "OutlineColour, BackColour, Bold, Italic, Underline, StrikeOut, "
              "ScaleX, ScaleY, Spacing, Angle, BorderStyle, Outline, Shadow, "
              "Alignment, MarginL, MarginR, MarginV, Encoding")
-    L.append(_style_line("Cap", font_size_px, text_color, box, pos, play_h))
-    L.append(_style_line("CapHl", font_size_px, hl_color, box, pos, play_h))
+    L.append(_style_line("Cap", font_size_px, text_color, box, pos, play_h, font))
+    L.append(_style_line("CapHl", font_size_px, hl_color, box, pos, play_h, font))
     L.append("")
     L.append("[Events]")
     L.append("Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, "
