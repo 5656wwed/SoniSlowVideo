@@ -2073,6 +2073,17 @@ def create_gui(theme, logs_in_gui=False):
                 pl_voice_preview_audio = gr.Audio(
                     label="Voice preview", type="filepath"
                 )
+                gr.Markdown(
+                    "**➕ Add a new Pocket clone here** — upload a voice sample "
+                    "and it appears in the 🎤 Pocket tab (saved to Drive, so it "
+                    "survives restarts)."
+                )
+                pl_clone_file = gr.File(
+                    label="Voice sample (.wav / .mp3 / .ogg)",
+                    file_count="single",
+                )
+                pl_clone_btn = gr.Button("➕ Add as clone voice")
+                pl_clone_msg = gr.Markdown("")
                 with gr.Row():
                     pl_src_lang = gr.Dropdown(
                         LANGUAGES_LIST, value=LANGUAGES_LIST[0],
@@ -2577,6 +2588,40 @@ def create_gui(theme, logs_in_gui=False):
                 d = _PRESETS.get("defaults", {})
                 return [gr.update(value=d.get(k)) for k in _SETTINGS_KEYS]
 
+            def pl_add_clone(file):
+                if file is None:
+                    return gr.update(), "Upload a voice sample first."
+                import shutil as _sh
+                src = file if isinstance(file, str) else getattr(file, "name", None)
+                if not src or not os.path.isfile(src):
+                    return gr.update(), "File not found."
+                ext = os.path.splitext(src)[1].lower()
+                if ext not in (".wav", ".mp3", ".ogg", ".m4a", ".flac"):
+                    return gr.update(), "Use .wav / .mp3 / .ogg."
+                name = os.path.splitext(os.path.basename(src))[0].strip() or "clone"
+                try:
+                    os.makedirs("_POCKET_", exist_ok=True)
+                    _sh.copyfile(src, os.path.join("_POCKET_", os.path.basename(src)))
+                    cdir = os.environ.get("POCKET_CLONE_DIR", "")
+                    if cdir:
+                        try:
+                            os.makedirs(cdir, exist_ok=True)
+                            _sh.copyfile(src, os.path.join(cdir, os.path.basename(src)))
+                        except Exception as _e:
+                            logger.warning(f"Drive clone save skipped: {_e}")
+                except Exception as _e:
+                    return gr.update(), f"Error saving clone: {_e}"
+                from soni_translate.language_configuration import (
+                    _scan_pocket_cloned_voices, POCKET_TTS_VOICES_LIST
+                )
+                _scan_pocket_cloned_voices()
+                names = sorted(
+                    k for k in POCKET_TTS_VOICES_LIST.keys() if k.startswith("en-")
+                )
+                return gr.update(
+                    choices=names, value=f"en-Pocket-{name} Pocket-TTS"
+                ), f"✅ Added clone '{name}'. Pick it in the 🎤 Pocket tab."
+
             pl_run.click(
                 run_pipeline,
                 inputs=[pl_video, pl_srt, pl_zoom, pl_crop_on, pl_crop_x,
@@ -2621,6 +2666,9 @@ def create_gui(theme, logs_in_gui=False):
 
             pl_preview_voice_btn.click(
                 pl_do_voice_preview, [pl_voice], [pl_voice_preview_audio]
+            )
+            pl_clone_btn.click(
+                pl_add_clone, [pl_clone_file], [pl_pocket_voice, pl_clone_msg]
             )
             pl_save_default_btn.click(
                 pl_save_default,
