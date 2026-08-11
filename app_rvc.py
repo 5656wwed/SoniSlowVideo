@@ -461,6 +461,9 @@ class SoniTranslate(SoniTrCache):
         caption_pos="lower",
         caption_karaoke=True,
         caption_font="Arial Black",
+        caption_glow=False,
+        caption_glow_color="#FFD400",
+        caption_glow_strength=6,
         enable_cache=True,
         custom_voices=False,
         custom_voices_workers=1,
@@ -1356,6 +1359,9 @@ class SoniTranslate(SoniTrCache):
                             box=caption_box, pos=caption_pos or "lower",
                             karaoke=caption_karaoke,
                             font=caption_font or "Arial Black",
+                            glow=bool(caption_glow),
+                            glow_color=caption_glow_color or "#FFD400",
+                            glow_strength=int(caption_glow_strength or 6),
                             play_w=_pw, play_h=_ph,
                         )
                         command = (
@@ -1974,6 +1980,16 @@ def create_gui(theme, logs_in_gui=False):
                     ],
                     value="Arial Black", label="Caption font",
                 )
+                pl_caps_glow = gr.Checkbox(
+                    False, label="Glow (neon halo behind text)"
+                )
+                with gr.Row():
+                    pl_caps_glow_color = gr.Textbox(
+                        value="#FFD400", label="Glow color (#RRGGBB)"
+                    )
+                    pl_caps_glow_strength = gr.Slider(
+                        1, 16, value=6, step=1, label="Glow strength"
+                    )
 
                 gr.Markdown("**Step 6 — Voice & Dubbing**")
                 pl_voice = gr.Dropdown(
@@ -2019,7 +2035,8 @@ def create_gui(theme, logs_in_gui=False):
                                crop_h, lut, lut_preset, bright, contrast, sat,
                                gamma, hue, cut_on, cut_sec, caps_on, caps_size,
                                caps_pos, caps_color, caps_hl, caps_box,
-                               caps_karaoke, caps_font):
+                               caps_karaoke, caps_font, caps_glow,
+                               caps_glow_color, caps_glow_strength):
                 if video is None:
                     gr.Warning("Upload a video first.")
                     return None
@@ -2147,6 +2164,9 @@ def create_gui(theme, logs_in_gui=False):
                                 box=bool(caps_box), pos=caps_pos or "lower",
                                 karaoke=bool(caps_karaoke),
                                 font=caps_font or "Arial Black",
+                                glow=bool(caps_glow),
+                                glow_color=caps_glow_color or "#FFD400",
+                                glow_strength=int(caps_glow_strength or 6),
                                 play_w=_pw, play_h=_ph,
                             )
                             _fin = "/tmp/pl_preview_cap_out.mp4"
@@ -2170,7 +2190,8 @@ def create_gui(theme, logs_in_gui=False):
                              crop_h, lut, lut_preset, bright, contrast, sat,
                              gamma, hue, cut_on, cut_sec, caps_on, caps_size,
                              caps_pos, caps_color, caps_hl, caps_box,
-                             caps_karaoke, caps_font, voice, src_lang, tgt_lang,
+                             caps_karaoke, caps_font, caps_glow, caps_glow_color,
+                             caps_glow_strength, voice, src_lang, tgt_lang,
                              bgm, bgm_preset, bgm_vol):
                 if video is None:
                     gr.Warning("Upload a video first.")
@@ -2216,6 +2237,9 @@ def create_gui(theme, logs_in_gui=False):
                     caption_pos=caps_pos,
                     caption_karaoke=bool(caps_karaoke),
                     caption_font=caps_font,
+                    caption_glow=bool(caps_glow),
+                    caption_glow_color=caps_glow_color,
+                    caption_glow_strength=int(caps_glow_strength or 6),
                     cut_mirror_sec=cut_sec,
                     bgm_file=bgm,
                     bgm_preset=_bgm if bgm_preset else None,
@@ -2389,7 +2413,9 @@ def create_gui(theme, logs_in_gui=False):
                         pl_bright, pl_contrast, pl_sat, pl_gamma, pl_hue,
                         pl_cut_on, pl_cut_sec, pl_caps_on, pl_caps_size,
                         pl_caps_pos, pl_caps_color, pl_caps_hl, pl_caps_box,
-                        pl_caps_karaoke, pl_caps_font, pl_voice, pl_src_lang, pl_tgt_lang,
+                        pl_caps_karaoke, pl_caps_font, pl_caps_glow,
+                        pl_caps_glow_color, pl_caps_glow_strength,
+                        pl_voice, pl_src_lang, pl_tgt_lang,
                         pl_bgm, pl_bgm_preset, pl_bgm_vol],
                 outputs=[pl_output],
             )
@@ -2412,7 +2438,8 @@ def create_gui(theme, logs_in_gui=False):
                         pl_bright, pl_contrast, pl_sat, pl_gamma, pl_hue,
                         pl_cut_on, pl_cut_sec, pl_caps_on, pl_caps_size,
                         pl_caps_pos, pl_caps_color, pl_caps_hl, pl_caps_box,
-                        pl_caps_karaoke, pl_caps_font],
+                        pl_caps_karaoke, pl_caps_font, pl_caps_glow,
+                        pl_caps_glow_color, pl_caps_glow_strength],
                 outputs=[pl_preview_video],
             )
 

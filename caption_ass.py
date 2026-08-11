@@ -61,7 +61,8 @@ def _esc(text):
     return text.replace("{", "(").replace("}", ")")
 
 
-def _style_line(name, size, color, box, pos, play_h, font="Arial Black"):
+def _style_line(name, size, color, box, pos, play_h, font="Arial Black",
+                outline_px=None, shadow_px=None):
     al = {"lower": 2, "center": 5, "top": 8}[pos]
     if box:
         border = 3  # opaque box behind text
@@ -70,8 +71,8 @@ def _style_line(name, size, color, box, pos, play_h, font="Arial Black"):
         back = "&H90000000"  # ~56% black
     else:
         border = 1  # outline + shadow only
-        outline = 3
-        shadow = 2
+        outline = outline_px if outline_px is not None else 3
+        shadow = shadow_px if shadow_px is not None else 2
         back = "&H80000000"
     m = max(30, int(play_h * 0.06)) if size <= 0 else size
     return (f"Style: {name},{font},{m},{_ass_color(color)},{_ass_color(color)},"
@@ -81,7 +82,8 @@ def _style_line(name, size, color, box, pos, play_h, font="Arial Black"):
 
 def make_caption_ass(srt_path, ass_path, font_size_px=0, text_color="#FFFFFF",
                      hl_color="#FFD400", box=True, pos="lower", karaoke=True,
-                     font="Arial Black", play_w=1280, play_h=720):
+                     font="Arial Black", glow=False, glow_color="#FFD400",
+                     glow_strength=6, play_w=1280, play_h=720):
     cues = _parse_srt(srt_path)
     L = []
     L.append("[Script Info]")
@@ -96,8 +98,19 @@ def make_caption_ass(srt_path, ass_path, font_size_px=0, text_color="#FFFFFF",
              "OutlineColour, BackColour, Bold, Italic, Underline, StrikeOut, "
              "ScaleX, ScaleY, Spacing, Angle, BorderStyle, Outline, Shadow, "
              "Alignment, MarginL, MarginR, MarginV, Encoding")
-    L.append(_style_line("Cap", font_size_px, text_color, box, pos, play_h, font))
-    L.append(_style_line("CapHl", font_size_px, hl_color, box, pos, play_h, font))
+    if glow:
+        # thin outline on the crisp text so the halo shows through
+        L.append(_style_line("Cap", font_size_px, text_color, False, pos, play_h,
+                             font, outline_px=1, shadow_px=1))
+        L.append(_style_line("CapHl", font_size_px, hl_color, False, pos, play_h,
+                             font, outline_px=1, shadow_px=1))
+        # glow underlayer is BIGGER + blurred so it peeks out around the text
+        _gsize = int((font_size_px if font_size_px > 0 else int(play_h * 0.06)) * 1.25)
+        L.append(_style_line("CapGlow", _gsize, glow_color, False, pos, play_h,
+                             font, outline_px=0, shadow_px=0))
+    else:
+        L.append(_style_line("Cap", font_size_px, text_color, box, pos, play_h, font))
+        L.append(_style_line("CapHl", font_size_px, hl_color, box, pos, play_h, font))
     L.append("")
     L.append("[Events]")
     L.append("Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, "
@@ -117,15 +130,23 @@ def make_caption_ass(srt_path, ass_path, font_size_px=0, text_color="#FFFFFF",
             continue
         line = " ".join(_esc(w) for w in words)
         layer += 1
-        # baseline line (all words, white) appears at start
-        L.append(f"Dialogue: 0,{_ts(start)},{_ts(end)},Cap,,0,0,0,,{line}")
+        if glow:
+            # layer 0: big blurred colored underlayer (the glow halo)
+            L.append(f"Dialogue: 0,{_ts(start)},{_ts(end)},CapGlow,,0,0,0,,"
+                     f"{{\\blur{int(glow_strength)}}}{line}")
+            # layer 1: crisp white caption on top
+            L.append(f"Dialogue: 1,{_ts(start)},{_ts(end)},Cap,,0,0,0,,{line}")
+        else:
+            L.append(f"Dialogue: 0,{_ts(start)},{_ts(end)},Cap,,0,0,0,,{line}")
         if karaoke and len(words) > 1:
             step = (end - start) / len(words)
+            hl_layer = 2 if glow else 1
             for i, w in enumerate(words):
                 ws = start + i * step
                 we = start + (i + 1) * step
                 # only the currently-spoken word is highlighted (overlay on top)
-                L.append(f"Dialogue: 1,{_ts(ws)},{_ts(we)},CapHl,,0,0,0,,{_esc(w)}")
+                L.append(f"Dialogue: {hl_layer},{_ts(ws)},{_ts(we)},CapHl,,0,0,0,,"
+                         f"{_esc(w)}")
     with open(ass_path, "w", encoding="utf-8") as f:
         f.write("\n".join(L) + "\n")
     return ass_path
