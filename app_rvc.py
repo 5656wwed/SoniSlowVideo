@@ -1,4 +1,5 @@
 import gradio as gr
+from caption_ass import make_caption_ass
 from soni_translate.logging_setup import (
     logger,
     set_logging_level,
@@ -452,6 +453,13 @@ class SoniTranslate(SoniTrCache):
         divide_text_segments_by="",
         soft_subtitles_to_video=True,
         burn_subtitles_to_video=False,
+        caption_enable=False,
+        caption_size=0,
+        caption_color="#FFFFFF",
+        caption_hl="#FFD400",
+        caption_box=True,
+        caption_pos="lower",
+        caption_karaoke=True,
         enable_cache=True,
         custom_voices=False,
         custom_voices_workers=1,
@@ -1325,7 +1333,35 @@ class SoniTranslate(SoniTrCache):
                 try:
                     logger.info("Burn subtitles")
                     remove_files(vid_subs)
-                    command = f"ffmpeg -i {base_video_file} -y -vf subtitles=sub_tra.srt -max_muxing_queue_size 9999 {vid_subs}"
+                    if caption_enable and os.path.isfile("sub_tra.srt"):
+                        # CapCut-style captions: generate styled ASS + burn
+                        _pw, _ph = 1280, 720
+                        try:
+                            import subprocess as _sp
+                            _probe = _sp.check_output(
+                                ["ffprobe", "-v", "error", "-select_streams", "v:0",
+                                 "-show_entries", "stream=width,height",
+                                 "-of", "csv=p=0", base_video_file],
+                                text=True).strip().split(",")
+                            _pw, _ph = int(_probe[0]), int(_probe[1])
+                        except Exception:
+                            pass
+                        _capass = "sub_tra_cap.ass"
+                        make_caption_ass(
+                            "sub_tra.srt", _capass,
+                            font_size_px=int(caption_size or 0),
+                            text_color=caption_color or "#FFFFFF",
+                            hl_color=caption_hl or "#FFD400",
+                            box=caption_box, pos=caption_pos or "lower",
+                            karaoke=caption_karaoke,
+                            play_w=_pw, play_h=_ph,
+                        )
+                        command = (
+                            f"ffmpeg -i {base_video_file} -y -vf "
+                            f"ass={_capass} -max_muxing_queue_size 9999 {vid_subs}"
+                        )
+                    else:
+                        command = f"ffmpeg -i {base_video_file} -y -vf subtitles=sub_tra.srt -max_muxing_queue_size 9999 {vid_subs}"
                     run_command(command)
                     base_video_file = vid_subs
                     self.burn_subs_id = hashvideo_text
@@ -1906,7 +1942,31 @@ def create_gui(theme, logs_in_gui=False):
                 )
                 pl_cut_sec = gr.Number(value=5, precision=0, label="Cut length (sec)")
 
-                gr.Markdown("**Step 5 — Voice & Dubbing**")
+                gr.Markdown("**Step 5 — Captions (CapCut style)**")
+                pl_caps_on = gr.Checkbox(
+                    False, label="Burn captions from SRT (bold text + word-by-word highlight)"
+                )
+                with gr.Row():
+                    pl_caps_size = gr.Slider(
+                        20, 140, value=64, step=2, label="Font size (px)"
+                    )
+                    pl_caps_pos = gr.Dropdown(
+                        ["lower", "center", "top"], value="lower",
+                        label="Position",
+                    )
+                with gr.Row():
+                    pl_caps_color = gr.Textbox(
+                        value="#FFFFFF", label="Text color (#RRGGBB)"
+                    )
+                    pl_caps_hl = gr.Textbox(
+                        value="#FFD400", label="Highlight color (#RRGGBB)"
+                    )
+                pl_caps_box = gr.Checkbox(True, label="Dark box behind text")
+                pl_caps_karaoke = gr.Checkbox(
+                    True, label="Word-by-word pop (highlight each word as spoken)"
+                )
+
+                gr.Markdown("**Step 6 — Voice & Dubbing**")
                 pl_voice = gr.Dropdown(
                     SoniTr.tts_info.tts_list(),
                     value="en-US-EmmaMultilingualNeural-Female",
@@ -1922,7 +1982,7 @@ def create_gui(theme, logs_in_gui=False):
                         label="Target language",
                     )
 
-                gr.Markdown("**Step 6 — Background Music** (optional)")
+                gr.Markdown("**Step 7 — Background Music** (optional)")
                 pl_bgm = gr.File(label="Music upload", file_count="single")
                 pl_bgm_preset = gr.Dropdown(
                     choices=_saved_files("bgm", (".mp3", ".wav", ".ogg", ".m4a", ".flac", ".aac")),
@@ -1946,9 +2006,11 @@ def create_gui(theme, logs_in_gui=False):
                     label="Filter preview", interactive=False
                 )
 
-            def pl_test_filter(video, zoom, crop_on, crop_x, crop_y, crop_w,
+            def pl_test_filter(video, srt, zoom, crop_on, crop_x, crop_y, crop_w,
                                crop_h, lut, lut_preset, bright, contrast, sat,
-                               gamma, hue, cut_on, cut_sec):
+                               gamma, hue, cut_on, cut_sec, caps_on, caps_size,
+                               caps_pos, caps_color, caps_hl, caps_box,
+                               caps_karaoke):
                 if video is None:
                     gr.Warning("Upload a video first.")
                     return None
@@ -2053,11 +2115,52 @@ def create_gui(theme, logs_in_gui=False):
                         _sh.copyfile(base, out)
                 else:
                     _sh.copyfile(base, out)
+                # CapCut-style captions on the preview (if SRT provided)
+                if caps_on and srt is not None and hasattr(srt, "name"):
+                    srt_path = srt.name
+                    if srt_path and os.path.isfile(srt_path):
+                        try:
+                            _pw, _ph = 1280, 720
+                            try:
+                                _probe = _sp.check_output(
+                                    ["ffprobe", "-v", "error", "-select_streams", "v:0",
+                                     "-show_entries", "stream=width,height",
+                                     "-of", "csv=p=0", out], text=True).strip().split(",")
+                                _pw, _ph = int(_probe[0]), int(_probe[1])
+                            except Exception:
+                                pass
+                            _cap = "/tmp/pl_preview_cap.ass"
+                            make_caption_ass(
+                                srt_path, _cap,
+                                font_size_px=int(caps_size or 0),
+                                text_color=caps_color or "#FFFFFF",
+                                hl_color=caps_hl or "#FFD400",
+                                box=bool(caps_box), pos=caps_pos or "lower",
+                                karaoke=bool(caps_karaoke),
+                                play_w=_pw, play_h=_ph,
+                            )
+                            _fin = "/tmp/pl_preview_cap_out.mp4"
+                            if os.path.exists(_fin):
+                                os.remove(_fin)
+                            _rc2 = _sp.run(
+                                ["ffmpeg", "-y", "-i", out, "-vf", f"ass={_cap}",
+                                 "-c:v", "libx264", "-preset", "medium", "-crf", "20",
+                                 "-c:a", "aac", "-b:a", "192k",
+                                 "-movflags", "+faststart", _fin],
+                                capture_output=True, text=True)
+                            if _rc2.returncode == 0:
+                                out = _fin
+                            else:
+                                gr.Warning("Caption burn failed: " + _rc2.stderr[-200:])
+                        except Exception as _cerr:
+                            gr.Warning("Caption error: " + str(_cerr))
                 return out
 
             def run_pipeline(video, srt, zoom, crop_on, crop_x, crop_y, crop_w,
                              crop_h, lut, lut_preset, bright, contrast, sat,
-                             gamma, hue, cut_on, cut_sec, voice, src_lang, tgt_lang,
+                             gamma, hue, cut_on, cut_sec, caps_on, caps_size,
+                             caps_pos, caps_color, caps_hl, caps_box,
+                             caps_karaoke, voice, src_lang, tgt_lang,
                              bgm, bgm_preset, bgm_vol):
                 if video is None:
                     gr.Warning("Upload a video first.")
@@ -2095,6 +2198,13 @@ def create_gui(theme, logs_in_gui=False):
                     edit_lut=lut,
                     lut_preset=_lut if lut_preset else None,
                     cut_mirror_enable=cut_on,
+                    caption_enable=bool(caps_on),
+                    caption_size=int(caps_size or 0),
+                    caption_color=caps_color,
+                    caption_hl=caps_hl,
+                    caption_box=bool(caps_box),
+                    caption_pos=caps_pos,
+                    caption_karaoke=bool(caps_karaoke),
                     cut_mirror_sec=cut_sec,
                     bgm_file=bgm,
                     bgm_preset=_bgm if bgm_preset else None,
@@ -2266,7 +2376,9 @@ def create_gui(theme, logs_in_gui=False):
                 inputs=[pl_video, pl_srt, pl_zoom, pl_crop_on, pl_crop_x,
                         pl_crop_y, pl_crop_w, pl_crop_h, pl_lut, pl_lut_preset,
                         pl_bright, pl_contrast, pl_sat, pl_gamma, pl_hue,
-                        pl_cut_on, pl_cut_sec, pl_voice, pl_src_lang, pl_tgt_lang,
+                        pl_cut_on, pl_cut_sec, pl_caps_on, pl_caps_size,
+                        pl_caps_pos, pl_caps_color, pl_caps_hl, pl_caps_box,
+                        pl_caps_karaoke, pl_voice, pl_src_lang, pl_tgt_lang,
                         pl_bgm, pl_bgm_preset, pl_bgm_vol],
                 outputs=[pl_output],
             )
@@ -2284,10 +2396,12 @@ def create_gui(theme, logs_in_gui=False):
             )
             pl_preview_btn.click(
                 pl_test_filter,
-                inputs=[pl_video, pl_zoom, pl_crop_on, pl_crop_x, pl_crop_y,
-                        pl_crop_w, pl_crop_h, pl_lut, pl_lut_preset,
+                inputs=[pl_video, pl_srt, pl_zoom, pl_crop_on, pl_crop_x,
+                        pl_crop_y, pl_crop_w, pl_crop_h, pl_lut, pl_lut_preset,
                         pl_bright, pl_contrast, pl_sat, pl_gamma, pl_hue,
-                        pl_cut_on, pl_cut_sec],
+                        pl_cut_on, pl_cut_sec, pl_caps_on, pl_caps_size,
+                        pl_caps_pos, pl_caps_color, pl_caps_hl, pl_caps_box,
+                        pl_caps_karaoke],
                 outputs=[pl_preview_video],
             )
 
