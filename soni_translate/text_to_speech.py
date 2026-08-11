@@ -1333,10 +1333,17 @@ def segments_fish_tts(filtered_fish_segments, TRANSLATE_AUDIO_TO):
 
 
 def preview_voice_audio(voice, phrase="Welcome! This is your selected voice. Let me know if you like it."):
-    """Synthesize a short sample of the given voice for a preview. Returns a path or None."""
-    out = "/tmp/voice_preview.mp3"
-    if os.path.exists(out):
-        os.remove(out)
+    """Synthesize a short sample of the given voice for a preview. Returns a path or None.
+
+    Saved to SAVE_DIR/previews/preview_<n>.mp3 (persists on Drive if SAVE_DIR points there).
+    """
+    save_dir = os.environ.get("SAVE_DIR", "") or os.getcwd()
+    pdir = os.path.join(save_dir, "previews")
+    os.makedirs(pdir, exist_ok=True)
+    n = 1
+    while os.path.exists(os.path.join(pdir, "preview_%03d.mp3" % n)):
+        n += 1
+    out = os.path.join(pdir, "preview_%03d.mp3" % n)
     if not voice:
         return None
     try:

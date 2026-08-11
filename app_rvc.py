@@ -1876,7 +1876,9 @@ def _saved_files(folder, exts):
 
 
 # ---- Saved settings & presets (persist across sessions) ----
-_PRESET_PATH = os.path.join(os.getcwd(), "pipeline_presets.json")
+_PRESET_PATH = os.path.join(
+    os.environ.get("SAVE_DIR", "") or os.getcwd(), "pipeline_presets.json"
+)
 def _load_presets():
     try:
         if os.path.exists(_PRESET_PATH):
@@ -2293,7 +2295,7 @@ def create_gui(theme, logs_in_gui=False):
                          or sat != 1.0 or gamma != 1.0 or hue or lut is not None
                          or lut_preset)
                 srt_path = srt.name if srt is not None and hasattr(srt, "name") else None
-                return SoniTr.multilingual_media_conversion(
+                _res = SoniTr.multilingual_media_conversion(
                     media_file=video,
                     target_language=tgt_lang,
                     origin_language=src_lang,
@@ -2333,6 +2335,24 @@ def create_gui(theme, logs_in_gui=False):
                     bgm_volume=bgm_vol,
                     enable_cache=True,
                 )
+                # Persist a numbered copy of the finished video to Drive
+                try:
+                    _out_src = _res[0] if isinstance(_res, (list, tuple)) else _res
+                    if isinstance(_out_src, str) and os.path.isfile(_out_src):
+                        import shutil as _sh
+                        save_dir = os.environ.get("SAVE_DIR", "") or os.getcwd()
+                        odir = os.path.join(save_dir, "outputs")
+                        os.makedirs(odir, exist_ok=True)
+                        _base = os.path.splitext(os.path.basename(_out_src))[0]
+                        _n = 1
+                        while os.path.exists(os.path.join(odir, f"{_base}_{_n:03d}.mp4")):
+                            _n += 1
+                        _dst = os.path.join(odir, f"{_base}_{_n:03d}.mp4")
+                        _sh.copyfile(_out_src, _dst)
+                        _res = _dst
+                except Exception as _e:
+                    logger.warning(f"Could not copy output to Drive: {_e}")
+                return _res
 
             def pl_crop_preview(video, crop_on, crop_x, crop_y, crop_w, crop_h):
                 import subprocess as _sp
