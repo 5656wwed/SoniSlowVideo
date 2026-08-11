@@ -465,6 +465,7 @@ class SoniTranslate(SoniTrCache):
         edit_contrast=1.0,
         edit_sat=1.0,
         edit_gamma=1.0,
+        edit_hue=0.0,
         edit_lut=None,
         cut_mirror_enable=False,
         cut_mirror_sec=5,
@@ -748,6 +749,8 @@ class SoniTranslate(SoniTrCache):
                             f"contrast={edit_contrast:.3f}:"
                             f"saturation={edit_sat:.3f}:gamma={edit_gamma:.3f}"
                         )
+                    if edit_hue:
+                        _vf.append(f"hue=h={edit_hue:.1f}")
                     _lutp = None
                     if lut_preset:
                         _lutp = os.path.join("assets", "lut", lut_preset)
@@ -1895,6 +1898,7 @@ def create_gui(theme, logs_in_gui=False):
                     pl_contrast = gr.Slider(0.0, 2.0, value=1.0, step=0.05, label="Contrast")
                     pl_sat = gr.Slider(0.0, 2.0, value=1.0, step=0.05, label="Saturation")
                     pl_gamma = gr.Slider(0.2, 3.0, value=1.0, step=0.05, label="Gamma")
+                    pl_hue = gr.Slider(-180, 180, value=0, step=1, label="Hue (deg)")
 
                 gr.Markdown("**Step 4 — Cut & Mirror** (optional)")
                 pl_cut_on = gr.Checkbox(
@@ -1944,7 +1948,7 @@ def create_gui(theme, logs_in_gui=False):
 
             def pl_test_filter(video, zoom, crop_on, crop_x, crop_y, crop_w,
                                crop_h, lut, lut_preset, bright, contrast, sat,
-                               gamma, cut_on, cut_sec):
+                               gamma, hue, cut_on, cut_sec):
                 if video is None:
                     gr.Warning("Upload a video first.")
                     return None
@@ -1998,7 +2002,7 @@ def create_gui(theme, logs_in_gui=False):
                         gr.Warning("Cut/mirror failed: " + _rc.stderr[-200:])
                 # Pass 2: crop / zoom / color / LUT (same as Run)
                 _do = (zoom > 100 or crop_on or bright or contrast != 1.0
-                       or sat != 1.0 or gamma != 1.0 or lut_preset
+                       or sat != 1.0 or gamma != 1.0 or hue or lut_preset
                        or (lut is not None and getattr(lut, "name", None)))
                 if _do:
                     _ew = _eh = 0
@@ -2027,6 +2031,8 @@ def create_gui(theme, logs_in_gui=False):
                             f"eq=brightness={bright:.3f}:contrast={contrast:.3f}:"
                             f"saturation={sat:.3f}:gamma={gamma:.3f}"
                         )
+                    if hue:
+                        _vf.append(f"hue=h={hue:.1f}")
                     _lutp = None
                     if lut_preset:
                         _lutp = os.path.join("assets", "lut", lut_preset)
@@ -2051,7 +2057,7 @@ def create_gui(theme, logs_in_gui=False):
 
             def run_pipeline(video, srt, zoom, crop_on, crop_x, crop_y, crop_w,
                              crop_h, lut, lut_preset, bright, contrast, sat,
-                             gamma, cut_on, cut_sec, voice, src_lang, tgt_lang,
+                             gamma, hue, cut_on, cut_sec, voice, src_lang, tgt_lang,
                              bgm, bgm_preset, bgm_vol):
                 if video is None:
                     gr.Warning("Upload a video first.")
@@ -2063,7 +2069,7 @@ def create_gui(theme, logs_in_gui=False):
                 if bgm_preset:
                     _bgm = os.path.join("assets", "bgm", bgm_preset)
                 _edit = (zoom > 100 or crop_on or bright or contrast != 1.0
-                         or sat != 1.0 or gamma != 1.0 or lut is not None
+                         or sat != 1.0 or gamma != 1.0 or hue or lut is not None
                          or lut_preset)
                 srt_path = srt.name if srt is not None and hasattr(srt, "name") else None
                 return SoniTr.multilingual_media_conversion(
@@ -2085,6 +2091,7 @@ def create_gui(theme, logs_in_gui=False):
                     edit_contrast=contrast,
                     edit_sat=sat,
                     edit_gamma=gamma,
+                    edit_hue=hue,
                     edit_lut=lut,
                     lut_preset=_lut if lut_preset else None,
                     cut_mirror_enable=cut_on,
@@ -2258,8 +2265,8 @@ def create_gui(theme, logs_in_gui=False):
                 run_pipeline,
                 inputs=[pl_video, pl_srt, pl_zoom, pl_crop_on, pl_crop_x,
                         pl_crop_y, pl_crop_w, pl_crop_h, pl_lut, pl_lut_preset,
-                        pl_bright, pl_contrast, pl_sat, pl_gamma, pl_cut_on,
-                        pl_cut_sec, pl_voice, pl_src_lang, pl_tgt_lang,
+                        pl_bright, pl_contrast, pl_sat, pl_gamma, pl_hue,
+                        pl_cut_on, pl_cut_sec, pl_voice, pl_src_lang, pl_tgt_lang,
                         pl_bgm, pl_bgm_preset, pl_bgm_vol],
                 outputs=[pl_output],
             )
@@ -2279,7 +2286,7 @@ def create_gui(theme, logs_in_gui=False):
                 pl_test_filter,
                 inputs=[pl_video, pl_zoom, pl_crop_on, pl_crop_x, pl_crop_y,
                         pl_crop_w, pl_crop_h, pl_lut, pl_lut_preset,
-                        pl_bright, pl_contrast, pl_sat, pl_gamma,
+                        pl_bright, pl_contrast, pl_sat, pl_gamma, pl_hue,
                         pl_cut_on, pl_cut_sec],
                 outputs=[pl_preview_video],
             )
