@@ -1229,7 +1229,7 @@ def fish_audio_voices_list():
 
     Sources (merged):
       1. FISH_VOICES env var  -> JSON  {"VoiceName": "voice_id", ...}
-      2. GET api.fish.audio/v1/voices (only if the key allows it)
+      2. GET api.fish.audio/model (clones + public) — model must be in HEADER.
     """
     out = []
     envj = os.environ.get("FISH_VOICES", "")
@@ -1243,25 +1243,32 @@ def fish_audio_voices_list():
             logger.warning(f"FISH_VOICES parse error: {e}")
     if FISH_API_KEY:
         import requests as _rq
-        try:
-            resp = _rq.get(
-                "https://api.fish.audio/v1/voices",
-                headers={"Authorization": f"Bearer {FISH_API_KEY}"},
-                timeout=30,
-            )
-            if resp.status_code == 200:
-                data = resp.json()
-                for v in (data if isinstance(data, list) else []):
-                    vid = v.get("id")
-                    title = (v.get("title") or v.get("name") or vid or "").strip()
-                    if vid and title:
-                        out.append((vid, title))
-            else:
-                logger.warning(
-                    f"Fish voices list skipped (HTTP {resp.status_code})"
+        for self_only in (True, False):
+            try:
+                resp = _rq.get(
+                    f"https://api.fish.audio/model"
+                    f"?page_size=100&page_number=1&self_only={'true' if self_only else 'false'}",
+                    headers={"Authorization": f"Bearer {FISH_API_KEY}"},
+                    timeout=30,
                 )
-        except Exception as e:
-            logger.warning(f"Fish voices list error: {e}")
+                if resp.status_code == 200:
+                    data = resp.json()
+                    items = data.get("items", []) if isinstance(data, dict) else []
+                    for it in items:
+                        vid = it.get("_id") or it.get("id")
+                        title = (it.get("title") or it.get("name") or "").strip()
+                        if not title:
+                            title = vid or "Unknown"
+                        if self_only:
+                            title = f"{title} (Clone)"
+                        if vid:
+                            out.append((str(vid), title))
+                else:
+                    logger.warning(
+                        f"Fish voices list skipped (HTTP {resp.status_code})"
+                    )
+            except Exception as e:
+                logger.warning(f"Fish voices list error: {e}")
     # dedupe by id
     seen, res = set(), []
     for vid, title in out:
@@ -1293,14 +1300,15 @@ def segments_fish_tts(filtered_fish_segments, TRANSLATE_AUDIO_TO):
         filename = f"audio/{start}.ogg"
         logger.info(f"Fish Audio [{title}]: {text[:60]}... → {filename}")
         try:
-            payload = {"text": text, "format": "mp3"}
+            payload = {"text": text, "format": "mp3", "normalize": True}
             if voice_id and len(voice_id) > 12:
                 payload["reference_id"] = voice_id
             resp = _rq.post(
-                f"https://api.fish.audio/v1/tts?model={FISH_MODEL}",
+                "https://api.fish.audio/v1/tts",
                 headers={
                     "Authorization": f"Bearer {FISH_API_KEY}",
                     "Content-Type": "application/json",
+                    "model": FISH_MODEL,  # Fish Audio reads model from the HEADER
                 },
                 json=payload,
                 timeout=180,
