@@ -1930,6 +1930,125 @@ def create_gui(theme, logs_in_gui=False):
                 pl_output = gr.File(label="Finished video", file_count="single",
                                     interactive=False)
 
+                gr.Markdown(
+                    "**⚡ Quick check first:** test just the video edit "
+                    "(crop + LUT + cut & mirror) — no dubbing — so you can "
+                    "see the look before committing the full dub."
+                )
+                pl_preview_btn = gr.Button(
+                    "⚡ Test filter only (no dubbing) — play to check the look"
+                )
+                pl_preview_video = gr.Video(
+                    label="Filter preview", interactive=False
+                )
+
+            def pl_test_filter(video, zoom, crop_on, crop_x, crop_y, crop_w,
+                               crop_h, lut, lut_preset, bright, contrast, sat,
+                               gamma, cut_on, cut_sec):
+                if video is None:
+                    gr.Warning("Upload a video first.")
+                    return None
+                import subprocess as _sp
+                import shutil as _sh
+                src = video if isinstance(video, str) else getattr(video, "name", None)
+                if not src or not os.path.isfile(src):
+                    gr.Warning("Video file not found.")
+                    return None
+                out = "/tmp/pl_preview_out.mp4"
+                if os.path.exists(out):
+                    os.remove(out)
+                base = "/tmp/pl_preview_src.mp4"
+                _sh.copyfile(src, base)
+                # Pass 1: cut & mirror (same as Run)
+                if cut_on:
+                    _seg = max(1, int(cut_sec or 5))
+                    _dur = 0.0
+                    try:
+                        _dur = float(_sp.check_output(
+                            ["ffprobe", "-v", "error", "-show_entries",
+                             "format=duration",
+                             "-of", "default=noprint_wrappers=1:nokey=1",
+                             base], text=True).strip())
+                    except Exception:
+                        _dur = 0.0
+                    _n = max(1, int(_dur // _seg) + (1 if _dur % _seg > 0 else 0)) if _dur > 0 else 1
+                    _fc = []
+                    for _i in range(_n):
+                        _s = _i * _seg
+                        _e = min((_i + 1) * _seg, _dur) if _dur > 0 else (_i + 1) * _seg
+                        _fl = ",hflip" if (_i % 2 == 1) else ""
+                        _fc.append(
+                            f"[0:v]trim=start={_s}:end={_e},setpts=PTS-STARTPTS{_fl}[v{_i}]"
+                        )
+                        _fc.append(
+                            f"[0:a]atrim=start={_s}:end={_e},asetpts=PTS-STARTPTS[a{_i}]"
+                        )
+                    _ci = "".join(f"[v{_i}][a{_i}]" for _i in range(_n))
+                    _fc.append(f"{_ci}concat=n={_n}:v=1:a=1[ov][oa]")
+                    _cm_out = base + ".cm.mp4"
+                    _cmd = ["ffmpeg", "-y", "-i", base, "-filter_complex",
+                            ";".join(_fc), "-map", "[ov]", "-map", "[oa]",
+                            "-c:v", "libx264", "-preset", "medium", "-crf", "20",
+                            "-c:a", "aac", "-b:a", "192k",
+                            "-movflags", "+faststart", _cm_out]
+                    _rc = _sp.run(_cmd, capture_output=True, text=True)
+                    if _rc.returncode == 0:
+                        os.replace(_cm_out, base)
+                    else:
+                        gr.Warning("Cut/mirror failed: " + _rc.stderr[-200:])
+                # Pass 2: crop / zoom / color / LUT (same as Run)
+                _do = (zoom > 100 or crop_on or bright or contrast != 1.0
+                       or sat != 1.0 or gamma != 1.0 or lut_preset
+                       or (lut is not None and getattr(lut, "name", None)))
+                if _do:
+                    _ew = _eh = 0
+                    try:
+                        _probe = _sp.check_output(
+                            ["ffprobe", "-v", "error", "-select_streams", "v:0",
+                             "-show_entries", "stream=width,height",
+                             "-of", "csv=p=0", base], text=True).strip().split(",")
+                        _ew, _eh = int(_probe[0]), int(_probe[1])
+                    except Exception:
+                        _ew = _eh = 0
+                    _vf = []
+                    if zoom and zoom > 100 and _ew and _eh:
+                        _zw = max(2, int(_ew * 100.0 / zoom))
+                        _zh = max(2, int(_eh * 100.0 / zoom))
+                        _vf.append(
+                            f"crop={_zw}:{_zh}:(in_w-{_zw})/2:(in_h-{_zh})/2"
+                        )
+                    if crop_w and crop_h:
+                        _vf.append(
+                            f"crop={int(crop_w)}:{int(crop_h)}:"
+                            f"{int(crop_x)}:{int(crop_y)}"
+                        )
+                    if (bright or contrast != 1.0 or sat != 1.0 or gamma != 1.0):
+                        _vf.append(
+                            f"eq=brightness={bright:.3f}:contrast={contrast:.3f}:"
+                            f"saturation={sat:.3f}:gamma={gamma:.3f}"
+                        )
+                    _lutp = None
+                    if lut_preset:
+                        _lutp = os.path.join("assets", "lut", lut_preset)
+                    elif lut is not None and getattr(lut, "name", None):
+                        _lutp = lut.name
+                    if _lutp and os.path.isfile(_lutp):
+                        _vf.append(f"lut3d=file='{_lutp}'")
+                    if _vf:
+                        _cmd = ["ffmpeg", "-y", "-i", base, "-vf", ",".join(_vf),
+                                "-c:v", "libx264", "-preset", "medium", "-crf", "20",
+                                "-c:a", "aac", "-b:a", "192k",
+                                "-movflags", "+faststart", out]
+                        _rc = _sp.run(_cmd, capture_output=True, text=True)
+                        if _rc.returncode != 0:
+                            gr.Warning("Filter preview failed: " + _rc.stderr[-200:])
+                            return None
+                    else:
+                        _sh.copyfile(base, out)
+                else:
+                    _sh.copyfile(base, out)
+                return out
+
             def run_pipeline(video, srt, zoom, crop_on, crop_x, crop_y, crop_w,
                              crop_h, lut, lut_preset, bright, contrast, sat,
                              gamma, cut_on, cut_sec, voice, src_lang, tgt_lang,
@@ -2155,6 +2274,14 @@ def create_gui(theme, logs_in_gui=False):
                 pl_drag_crop,
                 [pl_editor, pl_video],
                 [pl_crop_on, pl_crop_x, pl_crop_y, pl_crop_w, pl_crop_h],
+            )
+            pl_preview_btn.click(
+                pl_test_filter,
+                inputs=[pl_video, pl_zoom, pl_crop_on, pl_crop_x, pl_crop_y,
+                        pl_crop_w, pl_crop_h, pl_lut, pl_lut_preset,
+                        pl_bright, pl_contrast, pl_sat, pl_gamma,
+                        pl_cut_on, pl_cut_sec],
+                outputs=[pl_preview_video],
             )
 
         with gr.Tab(lg_conf["tab_translate"]):
