@@ -2542,6 +2542,8 @@ def create_gui(theme, logs_in_gui=False):
                 inputs=[pl_preset_dropdown],
                 outputs=_settings_inputs(),
             )
+            # Restore last-saved Pipeline settings when the page loads
+            app.load(pl_load_on_start, None, _settings_inputs())
 
         with gr.Tab(lg_conf["tab_translate"]):
             with gr.Row():
@@ -4311,9 +4313,6 @@ def create_gui(theme, logs_in_gui=False):
         ).then(
             play_sound_alert, [play_sound_gui], [sound_alert_notification]
         )
-
-    # Restore last-saved Pipeline settings when the page loads
-    app.load(pl_load_on_start, None, _settings_inputs())
 
     return app
 
