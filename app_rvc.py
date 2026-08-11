@@ -1844,6 +1844,13 @@ def create_gui(theme, logs_in_gui=False):
                     label="SRT (subtitles — used as-is, no transcription)",
                     file_count="single", type="filepath",
                 )
+                pl_video_view = gr.Video(
+                    label="👁️ See your video (watch, pause, then set crop below)",
+                    interactive=False,
+                )
+                pl_video.change(
+                    lambda v: v, inputs=pl_video, outputs=pl_video_view
+                )
 
                 gr.Markdown("**Step 2 — Crop / Zoom**")
                 pl_zoom = gr.Slider(100, 250, value=100, step=1,
@@ -1854,6 +1861,12 @@ def create_gui(theme, logs_in_gui=False):
                     pl_crop_y = gr.Number(value=0, precision=0, label="Crop Y")
                     pl_crop_w = gr.Number(value=0, precision=0, label="Crop W")
                     pl_crop_h = gr.Number(value=0, precision=0, label="Crop H")
+                pl_crop_preview_btn = gr.Button(
+                    "👁️ Preview crop box (draws your crop over a frame)"
+                )
+                pl_crop_preview_img = gr.Image(
+                    label="Crop preview", type="filepath", interactive=False
+                )
 
                 gr.Markdown("**Step 3 — LUT & Color**")
                 pl_lut = gr.File(label="LUT upload (.cube / .3dl)",
@@ -1948,6 +1961,33 @@ def create_gui(theme, logs_in_gui=False):
                     enable_cache=True,
                 )
 
+            def pl_crop_preview(video, crop_on, crop_x, crop_y, crop_w, crop_h):
+                import subprocess as _sp
+                if video is None:
+                    return None
+                src = video if isinstance(video, str) else getattr(video, "name", None)
+                if not src or not os.path.isfile(src):
+                    return None
+                vf = []
+                if crop_on and crop_w and crop_h:
+                    vf.append(
+                        f"drawbox=x={int(crop_x)}:y={int(crop_y)}:w={int(crop_w)}:"
+                        f"h={int(crop_h)}:color=yellow@0.5:t=3"
+                    )
+                fv = ",".join(vf) if vf else "null"
+                out = "/tmp/pl_crop_preview.png"
+                if os.path.exists(out):
+                    os.remove(out)
+                p = _sp.run(["ffmpeg", "-y", "-ss", "1", "-i", src,
+                             "-frames:v", "1", "-vf", fv, out],
+                            capture_output=True, text=True)
+                if p.returncode != 0:
+                    p = _sp.run(["ffmpeg", "-y", "-i", src, "-frames:v", "1",
+                                 "-vf", fv, out], capture_output=True, text=True)
+                if p.returncode != 0:
+                    return None
+                return out
+
             pl_run.click(
                 run_pipeline,
                 inputs=[pl_video, pl_srt, pl_zoom, pl_crop_on, pl_crop_x,
@@ -1956,6 +1996,12 @@ def create_gui(theme, logs_in_gui=False):
                         pl_cut_sec, pl_voice, pl_src_lang, pl_tgt_lang,
                         pl_bgm, pl_bgm_preset, pl_bgm_vol],
                 outputs=[pl_output],
+            )
+            pl_crop_preview_btn.click(
+                pl_crop_preview,
+                inputs=[pl_video, pl_crop_on, pl_crop_x, pl_crop_y,
+                        pl_crop_w, pl_crop_h],
+                outputs=[pl_crop_preview_img],
             )
 
         with gr.Tab(lg_conf["tab_translate"]):
