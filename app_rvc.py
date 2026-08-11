@@ -1991,11 +1991,41 @@ def create_gui(theme, logs_in_gui=False):
                         1, 16, value=6, step=1, label="Glow strength"
                     )
 
-                gr.Markdown("**Step 6 — Voice & Dubbing**")
-                pl_voice = gr.Dropdown(
-                    SoniTr.tts_info.tts_list(),
-                    value="en-US-EmmaMultilingualNeural-Female",
-                    label="Voice",
+                gr.Markdown("**Step 6 — Voice & Dubbing**  *(pick the TTS engine tab, then its voice)*")
+                with gr.Tabs():
+                    with gr.Tab("🎤 Pocket TTS + Clone"):
+                        pl_pocket_voice = gr.Dropdown(
+                            sorted(SoniTr.tts_info.list_pocket_tts or []),
+                            value=(sorted(SoniTr.tts_info.list_pocket_tts or []) or [None])[0],
+                            label="Pocket TTS / Clone voice",
+                        )
+                    with gr.Tab("🌐 Edge TTS"):
+                        pl_edge_voice = gr.Dropdown(
+                            sorted(SoniTr.tts_info.list_edge or []),
+                            value=("en-US-EmmaMultilingualNeural-Female"
+                                   if "en-US-EmmaMultilingualNeural-Female"
+                                   in (SoniTr.tts_info.list_edge or [])
+                                   else (sorted(SoniTr.tts_info.list_edge or []) or [None])[0]),
+                            label="Edge voice",
+                        )
+                    with gr.Tab("🍣 Kokoro TTS"):
+                        pl_kokoro_voice = gr.Dropdown(
+                            sorted(SoniTr.tts_info.list_kokoro or []),
+                            value=(sorted(SoniTr.tts_info.list_kokoro or []) or [None])[0],
+                            label="Kokoro voice",
+                        )
+                    with gr.Tab("🗂️ All voices"):
+                        pl_all_voice = gr.Dropdown(
+                            SoniTr.tts_info.tts_list(),
+                            label="Any engine voice",
+                        )
+                # Active dubbing voice (hidden) — set by whichever engine tab you pick
+                pl_voice = gr.Textbox(
+                    visible=False,
+                    value=("en-US-EmmaMultilingualNeural-Female"
+                           if "en-US-EmmaMultilingualNeural-Female"
+                           in (SoniTr.tts_info.list_edge or [])
+                           else (sorted(SoniTr.tts_info.list_edge or []) or [None])[0]),
                 )
                 with gr.Row():
                     pl_src_lang = gr.Dropdown(
@@ -2442,6 +2472,10 @@ def create_gui(theme, logs_in_gui=False):
                         pl_caps_glow_color, pl_caps_glow_strength],
                 outputs=[pl_preview_video],
             )
+            pl_pocket_voice.change(lambda v: v, [pl_pocket_voice], [pl_voice])
+            pl_edge_voice.change(lambda v: v, [pl_edge_voice], [pl_voice])
+            pl_kokoro_voice.change(lambda v: v, [pl_kokoro_voice], [pl_voice])
+            pl_all_voice.change(lambda v: v, [pl_all_voice], [pl_voice])
 
         with gr.Tab(lg_conf["tab_translate"]):
             with gr.Row():
