@@ -1,9 +1,17 @@
-from whisperx.alignment import (
-    DEFAULT_ALIGN_MODELS_TORCH as DAMT,
-    DEFAULT_ALIGN_MODELS_HF as DAMHF,
-)
-from whisperx.utils import TO_LANGUAGE_CODE
-import whisperx
+try:
+    from whisperx.alignment import (
+        DEFAULT_ALIGN_MODELS_TORCH as DAMT,
+        DEFAULT_ALIGN_MODELS_HF as DAMHF,
+    )
+    from whisperx.utils import TO_LANGUAGE_CODE
+    import whisperx
+except Exception:
+    # whisperx not installed (CPU/no-GPU). Transcription/diarization disabled;
+    # SRT mode + Kokoro/Pocket/Edge/Fish dubbing still work.
+    whisperx = None
+    DAMT = {}
+    DAMHF = {}
+    TO_LANGUAGE_CODE = {}
 import torch
 import gc
 import os

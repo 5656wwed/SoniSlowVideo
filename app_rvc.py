@@ -5,7 +5,10 @@ from soni_translate.logging_setup import (
     set_logging_level,
     configure_logging_libs,
 ); configure_logging_libs() # noqa
-import whisperx
+try:
+    import whisperx
+except Exception:
+    whisperx = None  # no whisperx (CPU/no-GPU) — SRT mode + TTS engines still work
 import torch
 import os
 from soni_translate.audio_segments import (

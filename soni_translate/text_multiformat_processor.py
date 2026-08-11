@@ -1,5 +1,8 @@
 from .logging_setup import logger
-from whisperx.utils import get_writer
+try:
+    from whisperx.utils import get_writer
+except Exception:
+    get_writer = None  # whisperx not installed — caption writer only used with transcription
 from .utils import remove_files, run_command, remove_directory_contents
 from typing import List
 import srt
