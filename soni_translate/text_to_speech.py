@@ -1332,6 +1332,58 @@ def segments_fish_tts(filtered_fish_segments, TRANSLATE_AUDIO_TO):
             error_handling_in_tts(error, segment, TRANSLATE_AUDIO_TO, filename)
 
 
+def preview_voice_audio(voice, phrase="Welcome! This is your selected voice. Let me know if you like it."):
+    """Synthesize a short sample of the given voice for a preview. Returns a path or None."""
+    out = "/tmp/voice_preview.mp3"
+    if os.path.exists(out):
+        os.remove(out)
+    if not voice:
+        return None
+    try:
+        if voice.endswith(" FishAudio"):
+            import requests as _rq
+            if not FISH_API_KEY:
+                return None
+            vid = _fish_title_to_id().get(voice.replace(" FishAudio", "").strip(), "")
+            if not vid:
+                return None
+            resp = _rq.post(
+                "https://api.fish.audio/v1/tts",
+                headers={"Authorization": f"Bearer {FISH_API_KEY}",
+                         "Content-Type": "application/json", "model": FISH_MODEL},
+                json={"text": phrase, "reference_id": vid, "format": "mp3", "normalize": True},
+                timeout=180,
+            )
+            if resp.status_code == 200:
+                with open(out, "wb") as f:
+                    f.write(resp.content)
+        elif voice.endswith(" Pocket-TTS"):
+            from .language_configuration import POCKET_TTS_VOICES_LIST
+            import shutil as _sh
+            v = POCKET_TTS_VOICES_LIST.get(voice, "alba")
+            pocket_bin = _sh.which("pocket-tts") or "pocket-tts"
+            subprocess.run(
+                [pocket_bin, "generate", "--text", phrase, "--voice", str(v),
+                 "--output-path", out, "--device", "cpu", "--quiet"],
+                capture_output=True, timeout=300,
+            )
+        elif voice.endswith(" Kokoro"):
+            from kokoro import KPipeline
+            kid = voice.replace("en-Kokoro-", "").replace(" Kokoro", "").strip()
+            kp = KPipeline(lang_code="a")
+            for _, _, audio in kp(phrase, voice=kid, speed=1.0):
+                audio.export(out, format="mp3")
+                break
+        else:
+            import edge_tts
+            import asyncio as _asyncio
+            _asyncio.run(edge_tts.Communicate(phrase, voice).save(out))
+        return out if os.path.exists(out) else None
+    except Exception as e:
+        logger.error(f"Voice preview failed ({voice}): {e}")
+        return None
+
+
 def find_spkr(pattern, speaker_to_voice, segments):
     return [
         speaker

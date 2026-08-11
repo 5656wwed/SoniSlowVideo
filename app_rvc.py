@@ -32,6 +32,7 @@ from soni_translate.text_to_speech import (
     create_wav_file_vc,
     accelerate_segments,
     fish_audio_voices_list,
+    preview_voice_audio,
 )
 from soni_translate.translate_segments import (
     translate_text,
@@ -1874,6 +1875,36 @@ def _saved_files(folder, exts):
     return out
 
 
+# ---- Saved settings & presets (persist across sessions) ----
+_PRESET_PATH = os.path.join(os.getcwd(), "pipeline_presets.json")
+def _load_presets():
+    try:
+        if os.path.exists(_PRESET_PATH):
+            with open(_PRESET_PATH, encoding="utf-8") as f:
+                return json.load(f)
+    except Exception:
+        pass
+    return {"defaults": {}, "presets": {}}
+_PRESETS = _load_presets()
+def _write_presets():
+    try:
+        with open(_PRESET_PATH, "w", encoding="utf-8") as f:
+            json.dump(_PRESETS, f, ensure_ascii=False, indent=2)
+    except Exception:
+        pass
+def _preset_names():
+    return sorted(_PRESETS.get("presets", {}).keys())
+# order must match _settings_inputs() in create_gui
+_SETTINGS_KEYS = [
+    "zoom", "crop_on", "crop_x", "crop_y", "crop_w", "crop_h", "lut_preset",
+    "bright", "contrast", "sat", "gamma", "hue", "cut_on", "cut_sec",
+    "caps_on", "caps_size", "caps_pos", "caps_color", "caps_hl", "caps_box",
+    "caps_karaoke", "caps_font", "caps_glow", "caps_glow_color",
+    "caps_glow_strength", "voice", "src_lang", "tgt_lang", "bgm_preset",
+    "bgm_vol",
+]
+
+
 def create_gui(theme, logs_in_gui=False):
     with gr.Blocks(theme=theme) as app:
         gr.Markdown(title)
@@ -2036,6 +2067,10 @@ def create_gui(theme, logs_in_gui=False):
                            in (SoniTr.tts_info.list_edge or [])
                            else (sorted(SoniTr.tts_info.list_edge or []) or [None])[0]),
                 )
+                pl_preview_voice_btn = gr.Button("🔊 Preview selected voice")
+                pl_voice_preview_audio = gr.Audio(
+                    label="Voice preview", type="filepath"
+                )
                 with gr.Row():
                     pl_src_lang = gr.Dropdown(
                         LANGUAGES_LIST, value=LANGUAGES_LIST[0],
@@ -2069,6 +2104,19 @@ def create_gui(theme, logs_in_gui=False):
                 pl_preview_video = gr.Video(
                     label="Filter preview", interactive=False
                 )
+
+                gr.Markdown("---\n**⚙️ Settings** *(saved on this machine — remembered next launch)*")
+                pl_save_default_btn = gr.Button("💾 Save my setup as default")
+                pl_preset_name = gr.Textbox(
+                    placeholder="Preset name (e.g. 'Epic Narrator')", label=""
+                )
+                with gr.Row():
+                    pl_save_preset_btn = gr.Button("➕ Save as preset")
+                    pl_load_preset_btn = gr.Button("📂 Load preset")
+                pl_preset_dropdown = gr.Dropdown(
+                    choices=_preset_names(), label="Presets", value=None
+                )
+                pl_settings_msg = gr.Markdown("")
 
             def pl_test_filter(video, srt, zoom, crop_on, crop_x, crop_y, crop_w,
                                crop_h, lut, lut_preset, bright, contrast, sat,
@@ -2445,6 +2493,70 @@ def create_gui(theme, logs_in_gui=False):
                 cy = max(0, int(round(y0 * sy)))
                 return True, cx, cy, cw, ch
 
+            def pl_do_voice_preview(voice):
+                p = preview_voice_audio(voice)
+                if not p:
+                    gr.Warning("Could not generate preview for this voice.")
+                return p
+
+            def _settings_inputs():
+                return [pl_zoom, pl_crop_on, pl_crop_x, pl_crop_y, pl_crop_w,
+                        pl_crop_h, pl_lut_preset, pl_bright, pl_contrast, pl_sat,
+                        pl_gamma, pl_hue, pl_cut_on, pl_cut_sec, pl_caps_on,
+                        pl_caps_size, pl_caps_pos, pl_caps_color, pl_caps_hl,
+                        pl_caps_box, pl_caps_karaoke, pl_caps_font, pl_caps_glow,
+                        pl_caps_glow_color, pl_caps_glow_strength, pl_voice,
+                        pl_src_lang, pl_tgt_lang, pl_bgm_preset, pl_bgm_vol]
+
+            def _collect_settings(zoom, crop_on, crop_x, crop_y, crop_w, crop_h,
+                                  lut_preset, bright, contrast, sat, gamma, hue,
+                                  cut_on, cut_sec, caps_on, caps_size, caps_pos,
+                                  caps_color, caps_hl, caps_box, caps_karaoke,
+                                  caps_font, caps_glow, caps_glow_color,
+                                  caps_glow_strength, voice, src_lang, tgt_lang,
+                                  bgm_preset, bgm_vol):
+                return {"zoom": zoom, "crop_on": crop_on, "crop_x": crop_x,
+                        "crop_y": crop_y, "crop_w": crop_w, "crop_h": crop_h,
+                        "lut_preset": lut_preset, "bright": bright,
+                        "contrast": contrast, "sat": sat, "gamma": gamma,
+                        "hue": hue, "cut_on": cut_on, "cut_sec": cut_sec,
+                        "caps_on": caps_on, "caps_size": caps_size,
+                        "caps_pos": caps_pos, "caps_color": caps_color,
+                        "caps_hl": caps_hl, "caps_box": caps_box,
+                        "caps_karaoke": caps_karaoke, "caps_font": caps_font,
+                        "caps_glow": caps_glow,
+                        "caps_glow_color": caps_glow_color,
+                        "caps_glow_strength": caps_glow_strength,
+                        "voice": voice, "src_lang": src_lang,
+                        "tgt_lang": tgt_lang, "bgm_preset": bgm_preset,
+                        "bgm_vol": bgm_vol}
+
+            def pl_save_default(*vals):
+                global _PRESETS
+                _PRESETS["defaults"] = _collect_settings(*vals)
+                _write_presets()
+                return "✅ Saved as default — restored next launch."
+
+            def pl_save_preset(preset_name, *vals):
+                global _PRESETS
+                preset_name = (preset_name or "").strip()
+                if not preset_name:
+                    return gr.update(), "Type a preset name first."
+                _PRESETS.setdefault("presets", {})[preset_name] = _collect_settings(*vals)
+                _write_presets()
+                names = sorted(_PRESETS["presets"].keys())
+                return gr.update(choices=names, value=preset_name), \
+                    f"✅ Saved preset '{preset_name}'."
+
+            def pl_load_preset(preset_name):
+                data = _PRESETS.get("presets", {}).get(preset_name or "") \
+                    or _PRESETS.get("defaults", {})
+                return [gr.update(value=data.get(k)) for k in _SETTINGS_KEYS]
+
+            def pl_load_on_start():
+                d = _PRESETS.get("defaults", {})
+                return [gr.update(value=d.get(k)) for k in _SETTINGS_KEYS]
+
             pl_run.click(
                 run_pipeline,
                 inputs=[pl_video, pl_srt, pl_zoom, pl_crop_on, pl_crop_x,
@@ -2486,6 +2598,25 @@ def create_gui(theme, logs_in_gui=False):
             pl_kokoro_voice.change(lambda v: v, [pl_kokoro_voice], [pl_voice])
             pl_fish_voice.change(lambda v: v, [pl_fish_voice], [pl_voice])
             pl_all_voice.change(lambda v: v, [pl_all_voice], [pl_voice])
+
+            pl_preview_voice_btn.click(
+                pl_do_voice_preview, [pl_voice], [pl_voice_preview_audio]
+            )
+            pl_save_default_btn.click(
+                pl_save_default,
+                inputs=_settings_inputs(),
+                outputs=[pl_settings_msg],
+            )
+            pl_save_preset_btn.click(
+                pl_save_preset,
+                inputs=[pl_preset_name] + _settings_inputs(),
+                outputs=[pl_preset_dropdown, pl_settings_msg],
+            )
+            pl_load_preset_btn.click(
+                pl_load_preset,
+                inputs=[pl_preset_dropdown],
+                outputs=_settings_inputs(),
+            )
 
         with gr.Tab(lg_conf["tab_translate"]):
             with gr.Row():
@@ -4255,6 +4386,9 @@ def create_gui(theme, logs_in_gui=False):
         ).then(
             play_sound_alert, [play_sound_gui], [sound_alert_notification]
         )
+
+    # Restore last-saved Pipeline settings when the page loads
+    app.load(pl_load_on_start, None, _settings_inputs())
 
     return app
 
