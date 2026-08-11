@@ -1861,6 +1861,21 @@ def create_gui(theme, logs_in_gui=False):
                     pl_crop_y = gr.Number(value=0, precision=0, label="Crop Y")
                     pl_crop_w = gr.Number(value=0, precision=0, label="Crop W")
                     pl_crop_h = gr.Number(value=0, precision=0, label="Crop H")
+
+                gr.Markdown(
+                    "**✂️ OR: drag the crop box directly** — click **\"Load "
+                    "frame\"**, then drag a rectangle on the video frame. It "
+                    "fills the Crop X/Y/W/H numbers above automatically (no "
+                    "number-guessing)."
+                )
+                pl_frame_btn = gr.Button("📸 Load video frame to draw crop box")
+                pl_editor = gr.ImageEditor(
+                    label="Drag a box on this frame → your crop region",
+                    tools=["box"],
+                    type="numpy",
+                    interactive=True,
+                    height=340,
+                )
                 pl_crop_preview_btn = gr.Button(
                     "👁️ Preview crop box (draws your crop over a frame)"
                 )
@@ -1988,6 +2003,138 @@ def create_gui(theme, logs_in_gui=False):
                     return None
                 return out
 
+            def pl_load_frame(video):
+                import subprocess as _sp
+                if video is None:
+                    return None
+                src = video if isinstance(video, str) else getattr(video, "name", None)
+                if not src or not os.path.isfile(src):
+                    return None
+                out = "/tmp/pl_editor_frame.png"
+                if os.path.exists(out):
+                    os.remove(out)
+                p = _sp.run(
+                    ["ffmpeg", "-y", "-ss", "1", "-i", src, "-frames:v", "1",
+                     "-vf", "scale=900:-2", out],
+                    capture_output=True, text=True,
+                )
+                if p.returncode != 0:
+                    p = _sp.run(
+                        ["ffmpeg", "-y", "-i", src, "-frames:v", "1",
+                         "-vf", "scale=900:-2", out],
+                        capture_output=True, text=True,
+                    )
+                return out if os.path.exists(out) else None
+
+            def _np_box(editor):
+                # Pull the drawn box out of a gr.ImageEditor output. Returns
+                # (x0,y0,x1,y1, mw, mh) in editor pixel space, or None.
+                import numpy as _np
+                if editor is None:
+                    return None
+                # Native box annotations (cleanest source, if present).
+                boxes = None
+                mw = mh = None
+                if isinstance(editor, dict):
+                    boxes = editor.get("boxes")
+                    bg = editor.get("background")
+                    if bg is not None:
+                        barr = _np.asarray(bg)
+                        mh, mw = barr.shape[0], barr.shape[1]
+                if boxes:
+                    best = None
+                    best_area = 0
+                    for b in boxes:
+                        try:
+                            x0, y0, x1, y1 = (int(round(float(b[0]))),
+                                              int(round(float(b[1]))),
+                                              int(round(float(b[2]))),
+                                              int(round(float(b[3]))))
+                        except Exception:
+                            continue
+                        area = (x1 - x0) * (y1 - y0)
+                        if area > best_area:
+                            best_area = area
+                            best = (x0, y0, x1, y1)
+                    if best is not None and mw and mh:
+                        return (best[0], best[1], best[2], best[3], mw, mh)
+                masks = None
+                if isinstance(editor, dict):
+                    masks = editor.get("masks")
+                elif isinstance(editor, (tuple, list)):
+                    masks = editor[-1] if len(editor) == 3 else None
+                if not masks:
+                    return None
+                best = None
+                best_area = 0
+                bm = None
+                for m in masks:
+                    if m is None:
+                        continue
+                    arr = _np.asarray(m)
+                    if arr.ndim == 3 and arr.shape[-1] in (3, 4):
+                        ch = arr.shape[-1]
+                        a = arr[..., 0] if ch == 3 else arr[..., 3]
+                    else:
+                        a = arr
+                    ys, xs = _np.where(a > 0)
+                    if len(xs) == 0:
+                        continue
+                    area = (int(xs.max()) - int(xs.min())) * (
+                        int(ys.max()) - int(ys.min())
+                    )
+                    if area > best_area:
+                        best_area = area
+                        best = (int(xs.min()), int(ys.min()),
+                                int(xs.max()), int(ys.max()))
+                        bm = a
+                if best is None:
+                    return None
+                return (best[0], best[1], best[2], best[3],
+                        bm.shape[1], bm.shape[0])
+
+            def _video_dims(path):
+                import subprocess as _sp
+                import json as _json
+                try:
+                    out = _sp.run(
+                        ["ffprobe", "-v", "error", "-select_streams", "v:0",
+                         "-show_entries", "stream=width,height", "-of", "json",
+                         path],
+                        capture_output=True, text=True,
+                    ).stdout
+                    st = _json.loads(out)["streams"][0]
+                    return int(st["width"]), int(st["height"])
+                except Exception:
+                    return None
+
+            def pl_drag_crop(editor, video):
+                import numpy as _np
+                if editor is None or video is None:
+                    return (gr.update(), gr.update(), gr.update(),
+                            gr.update(), gr.update())
+                src = video if isinstance(video, str) else getattr(video, "name", None)
+                box = _np_box(editor)
+                if box is None:
+                    return (gr.update(), gr.update(), gr.update(),
+                            gr.update(), gr.update())
+                x0, y0, x1, y1, mw, mh = box
+                if not mw or not mh:
+                    return (gr.update(), gr.update(), gr.update(),
+                            gr.update(), gr.update())
+                dims = _video_dims(src) if src else None
+                if dims:
+                    vw, vh = dims
+                else:
+                    vw, vh = mw, mh
+                sx = vw / mw
+                sy = vh / mh
+                cw = max(2, int(round((x1 - x0) * sx)))
+                ch = max(2, int(round((y1 - y0) * sy)))
+                cx = max(0, int(round(x0 * sx)))
+                cy = max(0, int(round(y0 * sy)))
+                return True, cx, cy, cw, ch
+
             pl_run.click(
                 run_pipeline,
                 inputs=[pl_video, pl_srt, pl_zoom, pl_crop_on, pl_crop_x,
@@ -2002,6 +2149,12 @@ def create_gui(theme, logs_in_gui=False):
                 inputs=[pl_video, pl_crop_on, pl_crop_x, pl_crop_y,
                         pl_crop_w, pl_crop_h],
                 outputs=[pl_crop_preview_img],
+            )
+            pl_frame_btn.click(pl_load_frame, [pl_video], [pl_editor])
+            pl_editor.change(
+                pl_drag_crop,
+                [pl_editor, pl_video],
+                [pl_crop_on, pl_crop_x, pl_crop_y, pl_crop_w, pl_crop_h],
             )
 
         with gr.Tab(lg_conf["tab_translate"]):
