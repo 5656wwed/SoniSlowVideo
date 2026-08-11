@@ -31,6 +31,7 @@ from soni_translate.text_to_speech import (
     piper_tts_voices_list,
     create_wav_file_vc,
     accelerate_segments,
+    fish_audio_voices_list,
 )
 from soni_translate.translate_segments import (
     translate_text,
@@ -143,6 +144,7 @@ class TTS_Info:
         self.list_pocket_tts = sorted(
             k for k in POCKET_TTS_VOICES_LIST.keys() if k.startswith("en-")
         )
+        self.list_fish = sorted(f"{t} FishAudio" for _, t in fish_audio_voices_list())
         self.piper_enabled = False
         self.list_vits_onnx = []  # hidden
         self.xtts_enabled = xtts_enabled
@@ -158,6 +160,7 @@ class TTS_Info:
             + self.list_openai_tts
             + self.list_kokoro
             + self.list_pocket_tts
+            + self.list_fish
             + self.list_vits_onnx
         )
         return list_tts
@@ -2014,6 +2017,12 @@ def create_gui(theme, logs_in_gui=False):
                             value=(sorted(SoniTr.tts_info.list_kokoro or []) or [None])[0],
                             label="Kokoro voice",
                         )
+                    with gr.Tab("🐟 Fish Audio + Clone"):
+                        pl_fish_voice = gr.Dropdown(
+                            sorted(SoniTr.tts_info.list_fish or []),
+                            value=(sorted(SoniTr.tts_info.list_fish or []) or [None])[0],
+                            label="Fish Audio / Clone voice",
+                        )
                     with gr.Tab("🗂️ All voices"):
                         pl_all_voice = gr.Dropdown(
                             SoniTr.tts_info.tts_list(),
@@ -2475,6 +2484,7 @@ def create_gui(theme, logs_in_gui=False):
             pl_pocket_voice.change(lambda v: v, [pl_pocket_voice], [pl_voice])
             pl_edge_voice.change(lambda v: v, [pl_edge_voice], [pl_voice])
             pl_kokoro_voice.change(lambda v: v, [pl_kokoro_voice], [pl_voice])
+            pl_fish_voice.change(lambda v: v, [pl_fish_voice], [pl_voice])
             pl_all_voice.change(lambda v: v, [pl_all_voice], [pl_voice])
 
         with gr.Tab(lg_conf["tab_translate"]):

@@ -1220,6 +1220,110 @@ def segments_pocket_tts(filtered_pocket_segments, TRANSLATE_AUDIO_TO):
 # =====================================
 
 
+FISH_API_KEY = os.environ.get("FISH_API_KEY", "")
+FISH_MODEL = os.environ.get("FISH_MODEL", "s2.1-pro-free")
+
+
+def fish_audio_voices_list():
+    """List Fish Audio voices (id, title).
+
+    Sources (merged):
+      1. FISH_VOICES env var  -> JSON  {"VoiceName": "voice_id", ...}
+      2. GET api.fish.audio/v1/voices (only if the key allows it)
+    """
+    out = []
+    envj = os.environ.get("FISH_VOICES", "")
+    if envj:
+        try:
+            import json as _json
+            for name, vid in _json.loads(envj).items():
+                if name and vid:
+                    out.append((str(vid), str(name)))
+        except Exception as e:
+            logger.warning(f"FISH_VOICES parse error: {e}")
+    if FISH_API_KEY:
+        import requests as _rq
+        try:
+            resp = _rq.get(
+                "https://api.fish.audio/v1/voices",
+                headers={"Authorization": f"Bearer {FISH_API_KEY}"},
+                timeout=30,
+            )
+            if resp.status_code == 200:
+                data = resp.json()
+                for v in (data if isinstance(data, list) else []):
+                    vid = v.get("id")
+                    title = (v.get("title") or v.get("name") or vid or "").strip()
+                    if vid and title:
+                        out.append((vid, title))
+            else:
+                logger.warning(
+                    f"Fish voices list skipped (HTTP {resp.status_code})"
+                )
+        except Exception as e:
+            logger.warning(f"Fish voices list error: {e}")
+    # dedupe by id
+    seen, res = set(), []
+    for vid, title in out:
+        if vid not in seen:
+            seen.add(vid)
+            res.append((vid, title))
+    return res
+
+
+def _fish_title_to_id():
+    return {title: vid for vid, title in fish_audio_voices_list()}
+
+
+def segments_fish_tts(filtered_fish_segments, TRANSLATE_AUDIO_TO):
+    """Fish Audio — cloud TTS via api.fish.audio (voice cloning via reference_id)."""
+    import requests as _rq
+    if not FISH_API_KEY:
+        logger.error("Fish Audio: no FISH_API_KEY set.")
+        return
+    title_to_id = _fish_title_to_id()
+    for segment in tqdm(sorted(
+        filtered_fish_segments["segments"], key=lambda x: x["tts_name"]
+    )):
+        text = segment["text"]
+        start = segment["start"]
+        tts_name = segment["tts_name"]
+        title = tts_name.replace(" FishAudio", "").strip()
+        voice_id = title_to_id.get(title, "") or tts_name
+        filename = f"audio/{start}.ogg"
+        logger.info(f"Fish Audio [{title}]: {text[:60]}... → {filename}")
+        try:
+            payload = {"text": text, "format": "mp3"}
+            if voice_id and len(voice_id) > 12:
+                payload["reference_id"] = voice_id
+            resp = _rq.post(
+                f"https://api.fish.audio/v1/tts?model={FISH_MODEL}",
+                headers={
+                    "Authorization": f"Bearer {FISH_API_KEY}",
+                    "Content-Type": "application/json",
+                },
+                json=payload,
+                timeout=180,
+            )
+            if resp.status_code != 200:
+                raise TTS_OperationError(
+                    f"Fish HTTP {resp.status_code}: {resp.text[:300]}"
+                )
+            tmp = filename[:-4] + ".fish.mp3"
+            with open(tmp, "wb") as f:
+                f.write(resp.content)
+            os.system(
+                f'ffmpeg -y -loglevel panic -i "{tmp}" '
+                f'-c:a libvorbis -q:a 4 "{filename}"'
+            )
+            if os.path.exists(tmp):
+                os.remove(tmp)
+            verify_saved_file_and_size(filename)
+        except Exception as error:
+            logger.error(f"Fish TTS failed: {error}")
+            error_handling_in_tts(error, segment, TRANSLATE_AUDIO_TO, filename)
+
+
 def find_spkr(pattern, speaker_to_voice, segments):
     return [
         speaker
@@ -1326,6 +1430,7 @@ def audio_segmentation_to_voice(
     pattern_openai_tts = re.compile(r".* OpenAI-TTS$")
     pattern_kokoro = re.compile(r".* Kokoro$")
     pattern_pocket_tts = re.compile(r".* Pocket-TTS$")
+    pattern_fish = re.compile(r".* FishAudio$")
     
 
     all_segments = result_diarize["segments"]
@@ -1342,6 +1447,7 @@ def audio_segmentation_to_voice(
     )
     speakers_kokoro = find_spkr(pattern_kokoro, speaker_to_voice, all_segments)
     speakers_pocket_tts = find_spkr(pattern_pocket_tts, speaker_to_voice, all_segments)
+    speakers_fish = find_spkr(pattern_fish, speaker_to_voice, all_segments)
     
 
     # Filter method in segments
@@ -1353,6 +1459,7 @@ def audio_segmentation_to_voice(
     filtered_openai_tts = filter_by_speaker(speakers_openai_tts, all_segments)
     filtered_kokoro = filter_by_speaker(speakers_kokoro, all_segments)
     filtered_pocket_tts = filter_by_speaker(speakers_pocket_tts, all_segments)
+    filtered_fish = filter_by_speaker(speakers_fish, all_segments)
     
 
     # Infer
@@ -1389,6 +1496,9 @@ def audio_segmentation_to_voice(
     if filtered_pocket_tts["segments"]:
         logger.info(f"Pocket TTS: {speakers_pocket_tts}")
         segments_pocket_tts(filtered_pocket_tts, TRANSLATE_AUDIO_TO)
+    if filtered_fish["segments"]:
+        logger.info(f"Fish Audio: {speakers_fish}")
+        segments_fish_tts(filtered_fish, TRANSLATE_AUDIO_TO)
 
 
     [result.pop("tts_name", None) for result in result_diarize["segments"]]
