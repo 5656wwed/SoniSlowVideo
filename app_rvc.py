@@ -1914,9 +1914,12 @@ def create_gui(theme, logs_in_gui=False):
 
         with gr.Tab("▶ Pipeline"):
             gr.Markdown(
-                "### 🎬 Crop → LUT → Dub → BGM\n"
-                "Run everything in one clean flow. Upload your video + SRT, "
-                "set your edit, pick a voice, add music, then hit Run."
+                "### 🎬 Crop → LUT → Captions → Dub → BGM\n"
+                "**Quick start:** ① Upload video + SRT → ② drag a crop box → "
+                "③ pick LUT/colors → ④ captions → ⑤ choose a voice (tap 🔊 to "
+                "preview it) → ⑥ add music → **▶ Run**. Use **⚡ Test filter** "
+                "first to see the look without the dub, and 💾 Save your setup "
+                "so it's remembered next time."
             )
             with gr.Column():
                 gr.Markdown("**Step 1 — Upload**")
@@ -2103,8 +2106,10 @@ def create_gui(theme, logs_in_gui=False):
                 pl_bgm_vol = gr.Slider(1, 60, value=15, step=1, label="BGM volume %")
 
                 pl_run = gr.Button("▶ Run Pipeline", variant="primary")
-                pl_output = gr.File(label="Finished video", file_count="single",
-                                    interactive=False)
+                pl_output = gr.Video(
+                    label="✅ Finished video (playable)",
+                    interactive=False,
+                )
 
                 gr.Markdown(
                     "**⚡ Quick check first:** test just the video edit "
