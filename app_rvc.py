@@ -580,6 +580,7 @@ class SoniTranslate(SoniTrCache):
         edit_sat=1.0,
         edit_gamma=1.0,
         edit_hue=0.0,
+        edit_warmth=0.0,
         edit_lut=None,
         cut_mirror_enable=False,
         cut_mirror_sec=5,
@@ -885,6 +886,12 @@ class SoniTranslate(SoniTrCache):
                         )
                     if edit_hue:
                         _eq.append(f"hue=h={edit_hue:.1f}")
+                    if edit_warmth:
+                        # warmth -1..1 -> 4500K (warm) .. 8500K (cool), 6500 neutral
+                        _eq.append(
+                            f"colortemperature=temperature="
+                            f"{int(6500 - float(edit_warmth) * 2000)}"
+                        )
                     if _eq:
                         _vf.extend(_eq)
                     _lutp = None

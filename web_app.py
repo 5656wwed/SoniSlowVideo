@@ -150,6 +150,7 @@ def _run_job(job_id):
             edit_sat=float(payload.get("edit_sat", 1.0)),
             edit_gamma=float(payload.get("edit_gamma", 1.0)),
             edit_hue=float(payload.get("edit_hue", 0.0)),
+            edit_warmth=float(payload.get("edit_warmth", 0.0)),
             edit_lut=None,
             lut_preset=payload.get("lut_custom") or LUT_PRESETS.get(payload.get("lut", "none")),
             cut_mirror_enable=bool(payload.get("cut_mirror_enable", False)),
@@ -427,6 +428,9 @@ def lut_preview(data: dict):
     h = float(data.get("hue", 0.0) or 0.0)
     if h:
         vf.append(f"hue=h={h:.1f}")
+    w = float(data.get("warmth", 0.0) or 0.0)
+    if w:
+        vf.append(f"colortemperature=temperature={int(6500 - w * 2000)}")
     if lut_path:
         vf.append(f"lut3d=file='{lut_path}'")
     if not vf:
