@@ -586,8 +586,10 @@ def pocket_clones():
 
 @app.post("/api/pocket/clone")
 async def pocket_clone(name: str = Form(...), file: UploadFile = File(...)):
-    """Clone a Pocket voice from an uploaded sample (wav/ogg/mp3)."""
+    """Clone a Pocket voice from an uploaded sample (WAV only)."""
     import uuid as _uuid, re as _re
+    if not (file.filename or "").lower().endswith(".wav"):
+        raise HTTPException(400, "Only .wav voice samples are supported for cloning. Convert your audio to WAV and try again.")
     voice_name = _re.sub(r"[^A-Za-z0-9 _\-]+", "", (name or "").strip()).strip() or "clone"
     POCKET_VOICES_DIR.mkdir(parents=True, exist_ok=True)
 

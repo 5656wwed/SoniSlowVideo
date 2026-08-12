@@ -212,9 +212,10 @@
       <div style="font-weight:600;font-size:13px;margin-bottom:8px">🎙️ Clone a Pocket voice</div>
       <div class="row">
         <div class="field" style="min-width:160px"><label>Clone name</label><input class="drop" id="cloneName" type="text" placeholder="e.g. myvoice"></div>
-        <div class="field" style="min-width:180px"><label>Voice sample (.wav/.ogg/.mp3)</label>
-          <div class="upload" id="cloneDrop">⬆ Drop audio<input type="file" id="cloneFile" accept="audio/*"></div>
+        <div class="field" style="min-width:180px"><label>Voice sample — <b style="color:var(--accent)">WAV only</b></label>
+          <div class="upload" id="cloneDrop">⬆ Drop WAV (.wav)<input type="file" id="cloneFile" accept=".wav,audio/wav"></div>
           <div class="fname" id="cloneFileName"></div>
+          <div style="font-size:11px;color:var(--faint);margin-top:6px">Upload a <b>.wav</b> sample (2–30s). Non-WAV files are rejected.</div>
         </div>
       </div>
       <button class="btn primary" id="cloneBtn" style="margin-top:10px">🎙️ Create Clone</button>
@@ -591,7 +592,12 @@ $('voiceSearch').addEventListener('input',renderVoices);
 
 // ---- Pocket clone ----
 let cloneFile=null;
-bindDrop($('cloneDrop'),$('cloneFile'),f=>{ if(f){cloneFile=f; $('cloneFileName').textContent=f.name;} });
+bindDrop($('cloneDrop'),$('cloneFile'),f=>{
+  if(!f) return;
+  const isWav = /\.wav$/i.test(f.name) || (f.type && f.type.includes('wav'));
+  if(!isWav){ $('cloneMsg').textContent='❌ Only .wav files are allowed.'; cloneFile=null; $('cloneFileName').textContent=''; return; }
+  cloneFile=f; $('cloneFileName').textContent=f.name; $('cloneMsg').textContent='';
+});
 $('cloneBtn').onclick=async()=>{
   const name=$('cloneName').value.trim();
   if(!name){ alert('Enter a clone name.'); return; }
