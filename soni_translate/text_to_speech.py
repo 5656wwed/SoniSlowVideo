@@ -160,15 +160,15 @@ def edge_tts_voices_list():
     return formatted_voices
 
 
-def _voice_speed():
-    """Master narration speed for ALL TTS engines. One env var, SONI_VOICE_SPEED,
-    default 0.8x. Engines with a native speed param use it directly; Edge/Pocket
-    are post-adjusted via rate/atempo. Clamped 0.5–1.5."""
+def _engine_speed(env_name, default):
+    """Per-engine narration speed. Each engine reads its OWN env var so they can
+    be tuned independently. Value is a multiplier (1.0 = natural, <1 slower,
+    >1 faster), clamped 0.5–1.5."""
     try:
-        v = float(os.environ.get("SONI_VOICE_SPEED", "0.8") or "0.8")
+        v = float(os.environ.get(env_name, str(default)) or str(default))
         return max(0.5, min(1.5, v))
     except Exception:
-        return 0.8
+        return float(default)
 
 
 def segments_egde_tts(filtered_edge_segments, TRANSLATE_AUDIO_TO, is_gui):
@@ -185,7 +185,7 @@ def segments_egde_tts(filtered_edge_segments, TRANSLATE_AUDIO_TO, is_gui):
         logger.info(f"{text} >> {filename}")
         try:
             if is_gui:
-                _spd = _voice_speed()
+                _spd = _engine_speed("SONI_EDGE_SPEED", 1.0)
                 _rate = f"{round((_spd - 1) * 100)}%"
                 asyncio.run(
                     edge_tts.Communicate(
@@ -194,7 +194,7 @@ def segments_egde_tts(filtered_edge_segments, TRANSLATE_AUDIO_TO, is_gui):
                 )
             else:
                 # nest_asyncio.apply() if not is_gui else None
-                _spd = _voice_speed()
+                _spd = _engine_speed("SONI_EDGE_SPEED", 1.0)
                 _rate = f"{round((_spd - 1) * 100)}%"
                 command = f'edge-tts -t "{text}" -v "{tts_name.replace("-Male", "").replace("-Female", "")}" --rate="{_rate}" --write-media "{temp_file}"'
                 run_command(command)
@@ -1014,7 +1014,7 @@ def segments_kokoro_tts(filtered_kokoro_segments, TRANSLATE_AUDIO_TO):
 
         # Locked pace: default 1.1x only. Never auto-rush higher.
         slot = _slot_for(start, end)
-        base = _voice_speed()
+        base = _engine_speed("SONI_KOKORO_SPEED", 1.1)
         speed = round(float(base), 2)
 
         logger.info(
@@ -1196,7 +1196,7 @@ def segments_pocket_tts(filtered_pocket_segments, TRANSLATE_AUDIO_TO):
                         tmp_wav = filename[:-4] + ".pkt.wav"
                         with open(tmp_wav, "wb") as f:
                             f.write(resp.content)
-                        _spd = _voice_speed()
+                        _spd = _engine_speed("SONI_POCKET_SPEED", 1.0)
                         _af = f"-af atempo={round(_spd, 3)} " if abs(_spd - 1.0) > 1e-3 else ""
                         os.system(
                             f'ffmpeg -y -loglevel panic -i "{tmp_wav}" {_af}'
@@ -1334,8 +1334,8 @@ def segments_fish_tts(filtered_fish_segments, TRANSLATE_AUDIO_TO):
         logger.info(f"Fish Audio [{title}]: {text[:60]}... → {filename}")
         try:
             payload = {"text": text, "format": "mp3", "normalize": True}
-            # Master narration speed (SONI_VOICE_SPEED) applied to Fish too.
-            payload["speed"] = round(_voice_speed(), 2)
+            # Per-engine narration speed (SONI_FISH_SPEED) applied to Fish too.
+            payload["speed"] = round(_engine_speed("SONI_FISH_SPEED", 0.8), 2)
             if voice_id and len(voice_id) > 12:
                 payload["reference_id"] = voice_id
             resp = _rq.post(
