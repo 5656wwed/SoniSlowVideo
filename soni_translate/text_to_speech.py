@@ -1243,15 +1243,21 @@ def fish_audio_voices_list():
             logger.warning(f"FISH_VOICES parse error: {e}")
     if FISH_API_KEY:
         import requests as _rq
+        # Fetch ALL pages of the model list (default caps at 100) so recently-used
+        # / public voices from the user's Fish account appear too.
         for self_only in (True, False):
-            try:
-                resp = _rq.get(
-                    f"https://api.fish.audio/model"
-                    f"?page_size=100&page_number=1&self_only={'true' if self_only else 'false'}",
-                    headers={"Authorization": f"Bearer {FISH_API_KEY}"},
-                    timeout=30,
-                )
-                if resp.status_code == 200:
+            page = 1
+            while True:
+                try:
+                    resp = _rq.get(
+                        f"https://api.fish.audio/model"
+                        f"?page_size=100&page_number={page}&self_only={'true' if self_only else 'false'}",
+                        headers={"Authorization": f"Bearer {FISH_API_KEY}"},
+                        timeout=30,
+                    )
+                    if resp.status_code != 200:
+                        logger.warning(f"Fish voices list skipped (HTTP {resp.status_code})")
+                        break
                     data = resp.json()
                     items = data.get("items", []) if isinstance(data, dict) else []
                     for it in items:
@@ -1263,16 +1269,28 @@ def fish_audio_voices_list():
                             title = f"{title} (Clone)"
                         if vid:
                             out.append((str(vid), title))
-                else:
-                    logger.warning(
-                        f"Fish voices list skipped (HTTP {resp.status_code})"
-                    )
-            except Exception as e:
-                logger.warning(f"Fish voices list error: {e}")
+                    if not data.get("has_more") or page >= 10:
+                        break
+                    page += 1
+                except Exception as e:
+                    logger.warning(f"Fish voices list error: {e}")
+                    break
     # dedupe by id
     seen, res = set(), []
     for vid, title in out:
         if vid not in seen:
+            seen.add(vid)
+            res.append((vid, title))
+    # Extra voices added by ID (user's bookmarks / favorites not in the model list).
+    # Format: semicolon-separated  id|Title
+    extra = os.environ.get("FISH_EXTRA_VOICES", "")
+    for piece in extra.split(";"):
+        piece = piece.strip()
+        if not piece or "|" not in piece:
+            continue
+        vid, title = piece.split("|", 1)
+        vid, title = vid.strip(), title.strip()
+        if vid and title and vid not in seen:
             seen.add(vid)
             res.append((vid, title))
     return res
@@ -1301,6 +1319,14 @@ def segments_fish_tts(filtered_fish_segments, TRANSLATE_AUDIO_TO):
         logger.info(f"Fish Audio [{title}]: {text[:60]}... → {filename}")
         try:
             payload = {"text": text, "format": "mp3", "normalize": True}
+            # Fish Audio supports a speed field (0.5–1.5 roughly). Default 0.8x
+            # (slower/natural-read) per user; override via SONI_FISH_SPEED env.
+            _fspeed = float(os.environ.get("SONI_FISH_SPEED", "0.8") or "0.8")
+            try:
+                _fspeed = max(0.5, min(1.5, _fspeed))
+            except Exception:
+                _fspeed = 0.8
+            payload["speed"] = round(_fspeed, 2)
             if voice_id and len(voice_id) > 12:
                 payload["reference_id"] = voice_id
             resp = _rq.post(
