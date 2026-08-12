@@ -141,7 +141,12 @@ def create_translated_audio(
                 previous_speaker = speaker
                 last_end_time = start + dur
             else:
-                last_end_time = max(last_end_time, start + dur)
+                # Never let a line overlap the previous one's audio. Only push
+                # it forward if it would genuinely start before the last ended
+                # (a perfect fit must NOT shift, or every line drifts by the gap).
+                if start < last_end_time:
+                    start = last_end_time + 0.02
+                last_end_time = start + dur
 
             placements.append((start, audio_file, audio, srt_start, srt_end))
 

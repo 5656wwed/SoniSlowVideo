@@ -171,6 +171,13 @@ def _engine_speed(env_name, default):
         return float(default)
 
 
+def _edge_rate(spd):
+    """Edge-TTS rate string from a speed multiplier. Edge REQUIRES a leading
+    +/- sign (even 0 must be '+0%'), otherwise it errors with 'Invalid rate'."""
+    pct = round((spd - 1) * 100)
+    return f"{'+' if pct >= 0 else ''}{pct}%"
+
+
 def segments_egde_tts(filtered_edge_segments, TRANSLATE_AUDIO_TO, is_gui):
     for segment in tqdm(filtered_edge_segments["segments"]):
         speaker = segment["speaker"] # noqa
@@ -186,7 +193,7 @@ def segments_egde_tts(filtered_edge_segments, TRANSLATE_AUDIO_TO, is_gui):
         try:
             if is_gui:
                 _spd = _engine_speed("SONI_EDGE_SPEED", 1.0)
-                _rate = f"{round((_spd - 1) * 100)}%"
+                _rate = _edge_rate(_spd)
                 asyncio.run(
                     edge_tts.Communicate(
                         text, "-".join(tts_name.split("-")[:-1]), rate=_rate
@@ -195,7 +202,7 @@ def segments_egde_tts(filtered_edge_segments, TRANSLATE_AUDIO_TO, is_gui):
             else:
                 # nest_asyncio.apply() if not is_gui else None
                 _spd = _engine_speed("SONI_EDGE_SPEED", 1.0)
-                _rate = f"{round((_spd - 1) * 100)}%"
+                _rate = _edge_rate(_spd)
                 command = f'edge-tts -t "{text}" -v "{tts_name.replace("-Male", "").replace("-Female", "")}" --rate="{_rate}" --write-media "{temp_file}"'
                 run_command(command)
             verify_saved_file_and_size(temp_file)
@@ -1759,13 +1766,13 @@ def accelerate_segments(
             try:
                 duration_create = librosa.get_duration(filename=out_file)
                 if (
-                    duration_create > duration_true * 1.05
+                    duration_create > duration_true * 1.001
                     and duration_true > 0.2
                 ):
                     force_rate = min(
                         max(duration_create / duration_true, 1.03), 1.35
                     )
-                    if force_rate > 1.05:
+                    if force_rate > 1.001:
                         tmp_force = out_file + ".fit.ogg"
                         atempo = _atempo_filter_chain(force_rate)
                         rc = os.system(
