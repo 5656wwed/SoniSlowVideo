@@ -1,5 +1,99 @@
 import gradio as gr
 from caption_ass import make_caption_ass
+import re as _re
+import subprocess as _subprocess
+import os as _os
+
+
+def _retime_captions_to_audio(srt_path, audio_dir="audio"):
+    """Re-time caption cues so each shows exactly when the narration speaks it.
+
+    The TTS narration is generated per merged sentence-chunk, placed at its
+    ABSOLUTE start time as audio/{start}.ogg (silent gaps between chunks). The
+    raw SRT cues use the source video's fixed pacing, so they drift from the
+    voice. Here we group cues with the same merge rule the TTS uses, then scale
+    each group's cues to fit that chunk's actual audio duration -> captions
+    stay locked to the spoken words.
+
+    Returns the path to a re-timed .srt (writes <srt_path>.synced.srt). If the
+    audio files aren't present (no dubbing), returns the original path.
+    """
+    if not _os.path.isdir(audio_dir) or not _os.path.isfile(srt_path):
+        return srt_path
+    _ts = _re.compile(r"(\d+):(\d+):(\d+)[,.](\d+)\s*-->\s*(\d+):(\d+):(\d+)[,.](\d+)")
+
+    def _sec(a, b, c, d):
+        return int(a) * 3600 + int(b) * 60 + int(c) + int(d) / 1000.0
+
+    def _parse(p):
+        raw = open(p, "r", encoding="utf-8-sig", errors="replace").read()
+        cues = []
+        for blk in _re.split(r"\n\s*\n", raw.strip()):
+            lines = [l for l in blk.splitlines() if l.strip()]
+            tl = next((l for l in lines if "-->" in l), None)
+            if not tl:
+                continue
+            m = _ts.search(tl)
+            if not m:
+                continue
+            idx = next((i for i, l in enumerate(lines) if "-->" in l), 1)
+            text = _re.sub(r"<[^>]+>", "", " ".join(lines[idx + 1:])).strip()
+            if not text:
+                continue
+            s = _sec(*m.group(1, 2, 3, 4)); e = _sec(*m.group(5, 6, 7, 8))
+            if e <= s:
+                e = s + 0.6
+            cues.append((s, e, text))
+        return cues
+
+    def _dur(f):
+        try:
+            out = _subprocess.check_output(
+                ["ffprobe", "-v", "error", "-show_entries", "format=duration",
+                 "-of", "default=noprint_wrappers=1:nokey=1", f],
+                text=True).strip()
+            return float(out)
+        except Exception:
+            return None
+
+    def _fmt(t):
+        ms = int(round(t * 1000))
+        h, ms = divmod(ms, 3600000); m, ms = divmod(ms, 60000); s, ms = divmod(ms, 1000)
+        return "%02d:%02d:%02d,%03d" % (h, m, s, ms)
+
+    cues = _parse(srt_path)
+    # group cues the same way the TTS merges sentence fragments
+    chunks = []
+    buf = None
+    for (s, e, t) in cues:
+        if buf is None:
+            buf = [s, e, [(s, e, t)]]; continue
+        if not _re.search(r'[.!?…]\s*$', buf[2][-1][2].strip()):
+            buf[1] = e; buf[2].append((s, e, t))
+        else:
+            chunks.append(buf); buf = [s, e, [(s, e, t)]]
+    if buf:
+        chunks.append(buf)
+
+    out = []
+    found = 0
+    for (cs, ce, chunk_cues) in chunks:
+        d = _dur(_os.path.join(audio_dir, f"{cs}.ogg"))
+        if d is not None and d > 0.05:
+            found += 1
+        else:
+            d = ce - cs  # missing audio -> keep original span
+        span = max(0.1, ce - cs)
+        for (s, e, t) in chunk_cues:
+            out.append((cs + (s - cs) / span * d, cs + (e - cs) / span * d, t))
+    if found == 0:
+        return srt_path  # no narration audio -> leave timings untouched
+    out.sort(key=lambda x: x[0])
+    dst = srt_path + ".synced.srt"
+    with open(dst, "w", encoding="utf-8") as f:
+        for i, (s, e, t) in enumerate(out, 1):
+            f.write(f"{i}\n{_fmt(s)} --> {_fmt(e)}\n{t}\n\n")
+    return dst
 from soni_translate.logging_setup import (
     logger,
     set_logging_level,
@@ -1384,6 +1478,9 @@ class SoniTranslate(SoniTrCache):
                     _cap_src = "sub_tra.srt"
                     if subtitle_file and os.path.isfile(subtitle_file):
                         _cap_src = subtitle_file
+                    # Re-time the captions to the actual narration audio so the
+                    # words show exactly when the voice says them (Option 1).
+                    _cap_src = _retime_captions_to_audio(_cap_src)
                     if caption_enable and os.path.isfile(_cap_src):
                         # CapCut-style captions: generate styled ASS + burn
                         _pw, _ph = 1280, 720
