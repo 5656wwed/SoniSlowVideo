@@ -1300,7 +1300,13 @@ class SoniTranslate(SoniTrCache):
             tts_voice09,
             tts_voice10,
             tts_voice11,
-            dereverb_automatic_xtts
+            dereverb_automatic_xtts,
+            # per-engine speed env (set from the web UI sliders) must invalidate the
+            # TTS cache, or a speed change re-runs from cache at the old pace.
+            os.environ.get("SONI_EDGE_SPEED", ""),
+            os.environ.get("SONI_KOKORO_SPEED", ""),
+            os.environ.get("SONI_FISH_SPEED", ""),
+            os.environ.get("SONI_POCKET_SPEED", ""),
         ], {
             "sub_file": self.sub_file
         }):

@@ -1334,8 +1334,6 @@ def segments_fish_tts(filtered_fish_segments, TRANSLATE_AUDIO_TO):
         logger.info(f"Fish Audio [{title}]: {text[:60]}... → {filename}")
         try:
             payload = {"text": text, "format": "mp3", "normalize": True}
-            # Per-engine narration speed (SONI_FISH_SPEED) applied to Fish too.
-            payload["speed"] = round(_engine_speed("SONI_FISH_SPEED", 0.8), 2)
             if voice_id and len(voice_id) > 12:
                 payload["reference_id"] = voice_id
             resp = _rq.post(
@@ -1355,8 +1353,12 @@ def segments_fish_tts(filtered_fish_segments, TRANSLATE_AUDIO_TO):
             tmp = filename[:-4] + ".fish.mp3"
             with open(tmp, "wb") as f:
                 f.write(resp.content)
+            # Fish /v1/tts ignores a `speed` field, so post-adjust with atempo
+            # (same approach as Pocket TTS). atempo covers 0.5-2.0; _engine_speed clamps 0.5-1.5.
+            _fspd = round(_engine_speed("SONI_FISH_SPEED", 0.8), 3)
+            _af = f"-af atempo={_fspd} " if abs(_fspd - 1.0) > 1e-3 else ""
             os.system(
-                f'ffmpeg -y -loglevel panic -i "{tmp}" '
+                f'ffmpeg -y -loglevel panic -i "{tmp}" {_af}'
                 f'-c:a libvorbis -q:a 4 "{filename}"'
             )
             if os.path.exists(tmp):
