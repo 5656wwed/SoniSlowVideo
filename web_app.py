@@ -1,10 +1,10 @@
 #!/usr/bin/env python3
 """
-SoniSlowVideo — custom web app (no Gradio).
+Gudmarv Easy dubbing — custom web app (no Gradio).
 Frontend = the mock design (static HTML/CSS/JS). Backend = the real
 SoniTranslate engine exposed as a FastAPI service.
 
-Run:  python web_app.py  (cwd must be the SoniSlowVideo repo dir)
+Run:  python web_app.py  (cwd must be the repo dir)
 """
 import os, sys, json, time, threading, traceback, shutil, uuid, re, tempfile, subprocess
 from pathlib import Path
@@ -26,7 +26,7 @@ from fastapi import FastAPI, UploadFile, File, Form, HTTPException
 from fastapi.responses import FileResponse, HTMLResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 
-app = FastAPI(title="SoniSlowVideo API")
+app = FastAPI(title="Gudmarv Easy dubbing API")
 
 # Instantiate the engine ONCE (CPU mode). Heavy: loads TTS voice lists + VCI.
 _engine = None
@@ -599,7 +599,7 @@ async def pocket_clone(name: str = Form(...), file: UploadFile = File(...)):
     exp = subprocess.run([POCKET_CLI, "export-voice", str(wav16k), str(out_path), "--quiet"],
                          capture_output=True, text=True, timeout=300)
     # Also drop a wav conditioning sample into the engine's _POCKET_/ folder so
-    # this clone shows up in the SoniSlowVideo Pocket voice dropdown + is usable.
+    # this clone shows up in the Gudmarv Easy dubbing Pocket voice dropdown + is usable.
     pocket_scan = Path(REPO) / "_POCKET_"
     pocket_scan.mkdir(parents=True, exist_ok=True)
     wav_copy = pocket_scan / f"{voice_name}.wav"
@@ -626,12 +626,12 @@ def index():
     idx = WEB_DIR / "index.html"
     if idx.exists():
         return HTMLResponse(idx.read_text())
-    return HTMLResponse("<h1>SoniSlowVideo</h1><p>frontend not found</p>")
+    return HTMLResponse("<h1>Gudmarv Easy dubbing</h1><p>frontend not found</p>")
 
 if __name__ == "__main__":
     import uvicorn
     port = int(os.environ.get("PORT", 7860))
-    print(f"SoniSlowVideo web app -> http://127.0.0.1:{port}")
+    print(f"Gudmarv Easy dubbing web app -> http://127.0.0.1:{port}")
     # Warm the heavy engine + voice list once at boot (background) so the first
     # page load and first render don't block ~50s. The voice list is cached 15
     # min, and the engine is built once and reused, so this is a one-time cost.

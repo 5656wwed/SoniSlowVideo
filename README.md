@@ -1,4 +1,4 @@
-# SoniSlowVideo
+# Gudmarv Easy dubbing
 
 **Slow the VIDEO to fit natural voice** — not the other way around.
 

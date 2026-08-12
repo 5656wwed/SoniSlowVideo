@@ -49,7 +49,7 @@ python -m pip install pip==23.1.2 Setuptools==80.6.0
 
 2. Clone this github repository and navigate to it:
 ```
-git clone https://github.com/r3gm/SoniTranslate.git
+git clone https://github.com/5656wwed/SoniTranslate.git
 cd SoniTranslate
 ```
 3. Install CUDA Toolkit 11.8.0
