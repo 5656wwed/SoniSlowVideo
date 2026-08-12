@@ -52,6 +52,15 @@ LUT_PRESETS = {
     "Cinematic-Teal": "Cinematic-Teal.cube",
     "Warm-Gold": "Warm-Gold.cube",
     "Mono": "Mono.cube",
+    "Cool-Icy": "Cool-Icy.cube",
+    "Vivid-Punch": "Vivid-Punch.cube",
+    "Warm-Glow": "Warm-Glow.cube",
+    "Bleach-Bypass": "Bleach-Bypass.cube",
+    "Moody-Monochrome": "Moody-Monochrome.cube",
+    "Cinematic-Teal-Orange": "Cinematic-Teal-Orange.cube",
+    "Amber-Faded-Classic": "TH1_AmberFadedClassicRetro.cube",
+    "Bright-Daylight": "TH1_BrightDaylightEditorial.cube",
+    "Eerie-Olive-Horror": "TH1_EerieOliveHorrorNarrative.cube",
 }
 
 class _NamedPath:
@@ -373,6 +382,66 @@ def download(filename: str):
     if not p.exists() or not p.is_file():
         raise HTTPException(404, "file not found")
     return FileResponse(str(p), filename=filename)
+
+
+@app.post("/api/lut_preview")
+def lut_preview(data: dict):
+    """Render a live preview frame with the chosen LUT + color adjustments.
+
+    Body: {"video": "<path>", "lut": "<preset-name|'custom'>",
+           "lut_custom": "<uploaded .cube filename>", "bright": f,
+           "contrast": f, "sat": f, "hue": f}
+    Returns a PNG of one video frame graded with the same chain the render uses,
+    so the user can SEE what a (custom) LUT does before committing a render.
+    """
+    import io
+    from fastapi.responses import Response as _Resp
+    vpath = data.get("video")
+    if not vpath or not os.path.isfile(vpath):
+        raise HTTPException(400, "no video")
+    # resolve the .cube file
+    lut_file = data.get("lut_custom") or LUT_PRESETS.get(data.get("lut"))
+    lut_path = None
+    if lut_file:
+        cand = Path(REPO) / "assets" / "lut" / lut_file
+        if cand.is_file():
+            lut_path = cand
+    # pick a representative frame (~15% in)
+    try:
+        dur = float(subprocess.check_output(
+            ["ffprobe", "-v", "error", "-show_entries", "format=duration",
+             "-of", "default=noprint_wrappers=1:nokey=1", vpath],
+            text=True).strip())
+    except Exception:
+        dur = 3.0
+    ts = max(0.1, dur * 0.15)
+    tmp = Path(tempfile.gettempdir()) / f"lutpv_{uuid.uuid4().hex[:8]}.png"
+    vf = []
+    m = 1.0 + float(data.get("bright", 0.0) or 0.0)
+    if abs(m - 1.0) > 1e-3:
+        vf.append(f"lutyuv=y='clip(val*{m:.4f},0,255)'")
+    c = float(data.get("contrast", 1.0) or 1.0)
+    s = float(data.get("sat", 1.0) or 1.0)
+    if abs(c - 1.0) > 1e-3 or abs(s - 1.0) > 1e-3:
+        vf.append(f"eq=contrast={c:.3f}:saturation={s:.3f}")
+    h = float(data.get("hue", 0.0) or 0.0)
+    if h:
+        vf.append(f"hue=h={h:.1f}")
+    if lut_path:
+        vf.append(f"lut3d=file='{lut_path}'")
+    if not vf:
+        vf = ["null"]
+    cmd = ["ffmpeg", "-y", "-ss", f"{ts:.3f}", "-i", vpath,
+           "-vf", ",".join(vf), "-frames:v", "1", "-q:v", "3", str(tmp)]
+    rc = subprocess.run(cmd, capture_output=True, text=True)
+    if rc.returncode != 0 or not tmp.exists():
+        if tmp.exists():
+            tmp.unlink(missing_ok=True)
+        raise HTTPException(500, f"preview failed: {rc.stderr[-200:]}")
+    data_bytes = tmp.read_bytes()
+    tmp.unlink(missing_ok=True)
+    return _Resp(content=data_bytes, media_type="image/png")
+
 
 FAVORITES_FILE = Path(REPO) / "favorites.txt"
 
