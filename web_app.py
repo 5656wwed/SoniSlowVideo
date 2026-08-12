@@ -164,6 +164,20 @@ def _run_job(job_id):
             progress=_Progress(job_id),
         )
 
+        # Per-engine narration speed sliders (0.5-1.5) -> set each engine's env var
+        # before the run so _engine_speed() in text_to_speech.py picks up the UI value.
+        for _env, _key in (("SONI_EDGE_SPEED", "edge_speed"),
+                           ("SONI_KOKORO_SPEED", "kokoro_speed"),
+                           ("SONI_FISH_SPEED", "fish_speed"),
+                           ("SONI_POCKET_SPEED", "pocket_speed")):
+            if _key in payload and payload.get(_key) not in (None, ""):
+                try:
+                    _v = max(0.5, min(1.5, float(payload.get(_key))))
+                    os.environ[_env] = str(_v)
+                    print(f"[SPEED] {_key}={_v} -> {_env}")
+                except Exception:
+                    pass
+
         st["message"] = "Engine running..."
         result = eng.multilingual_media_conversion(**args)
         if isinstance(result, str):
@@ -221,6 +235,22 @@ async def upload_file(
     size = dest.stat().st_size
     print(f"[UPLOAD] {kind} -> {dest.name} ({size} bytes)")
     return {"id": str(uid), "kind": kind, "path": str(dest), "size": size, "name": safe}
+
+@app.get("/api/speeds")
+def get_speeds():
+    """Current + default per-engine narration speeds so the UI sliders init correctly."""
+    specs = [("SONI_EDGE_SPEED", "edge_speed", 1.0, "Edge-TTS"),
+             ("SONI_KOKORO_SPEED", "kokoro_speed", 1.1, "Kokoro"),
+             ("SONI_FISH_SPEED", "fish_speed", 0.8, "Fish Audio"),
+             ("SONI_POCKET_SPEED", "pocket_speed", 1.0, "Pocket-TTS")]
+    out = {}
+    for env, key, dflt, label in specs:
+        try:
+            cur = max(0.5, min(1.5, float(os.environ.get(env, dflt))))
+        except Exception:
+            cur = dflt
+        out[key] = {"current": round(cur, 2), "default": dflt, "label": label, "min": 0.5, "max": 1.5}
+    return out
 
 @app.post("/api/render")
 async def render(
