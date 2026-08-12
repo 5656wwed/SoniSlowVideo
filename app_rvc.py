@@ -1714,6 +1714,31 @@ class SoniTranslate(SoniTrCache):
                         f'"{video_output_file}"'
                     )
 
+        # Adjust playback speed BEFORE mixing BGM, so the background music
+        # stays at normal tempo — only the video + dubbed voice are retimed.
+        if not is_audio_file(media_file):
+            try:
+                import subprocess as _sp
+                _os = float(output_speed or 1.0)
+                if abs(_os - 1.0) > 1e-3 and os.path.isfile(video_output_file):
+                    _spd = max(0.5, min(1.5, _os))
+                    _sp_out = video_output_file + ".speed.mp4"
+                    _rc = _sp.run([
+                        "ffmpeg", "-y", "-i", video_output_file,
+                        "-vf", f"setpts=PTS/{_spd:.4f}",
+                        "-af", f"atempo={_spd:.4f}",
+                        "-c:v", "libx264", "-preset", "fast", "-crf", "20",
+                        "-c:a", "aac", "-b:a", "192k",
+                        "-movflags", "+faststart", _sp_out,
+                    ], capture_output=True, text=True)
+                    if _rc.returncode == 0 and os.path.isfile(_sp_out):
+                        os.replace(_sp_out, video_output_file)
+                        logger.info(f"Output speed adjusted: {_spd:.2f}x")
+                    else:
+                        logger.error(f"Speed pass failed: {_rc.stderr[-300:]}")
+            except Exception as _e:
+                logger.error(f"Speed pass exception: {_e}")
+
         # Mix background music under the dub (flat, at set volume)
         _bgmp = None
         if bgm_preset:
@@ -1756,30 +1781,6 @@ class SoniTranslate(SoniTrCache):
                     logger.error(f"BGM mix failed: {_rc.stderr[-400:]}")
             except Exception as _e:
                 logger.error(f"BGM mix exception: {_e}")
-
-        # Adjust playback speed of the FINISHED dubbed video (setpts video,
-        # atempo audio — pitch preserved). Lets the video sync to the voice.
-        try:
-            import subprocess as _sp
-            _os = float(output_speed or 1.0)
-            if abs(_os - 1.0) > 1e-3 and os.path.isfile(video_output_file):
-                _spd = max(0.5, min(1.5, _os))
-                _sp_out = video_output_file + ".speed.mp4"
-                _rc = _sp.run([
-                    "ffmpeg", "-y", "-i", video_output_file,
-                    "-vf", f"setpts=PTS/{_spd:.4f}",
-                    "-af", f"atempo={_spd:.4f}",
-                    "-c:v", "libx264", "-preset", "fast", "-crf", "20",
-                    "-c:a", "aac", "-b:a", "192k",
-                    "-movflags", "+faststart", _sp_out,
-                ], capture_output=True, text=True)
-                if _rc.returncode == 0 and os.path.isfile(_sp_out):
-                    os.replace(_sp_out, video_output_file)
-                    logger.info(f"Output speed adjusted: {_spd:.2f}x")
-                else:
-                    logger.error(f"Speed pass failed: {_rc.stderr[-300:]}")
-        except Exception as _e:
-            logger.error(f"Speed pass exception: {_e}")
 
         output = media_out(
             media_file,
