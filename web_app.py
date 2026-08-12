@@ -151,8 +151,10 @@ def _run_job(job_id):
             edit_gamma=float(payload.get("edit_gamma", 1.0)),
             edit_hue=float(payload.get("edit_hue", 0.0)),
             edit_warmth=float(payload.get("edit_warmth", 0.0)),
+            color_grade=payload.get("color_grade", "none") or "none",
             edit_lut=None,
             lut_preset=payload.get("lut_custom") or LUT_PRESETS.get(payload.get("lut", "none")),
+            output_speed=float(payload.get("output_speed", 1.0) or 1.0),
             cut_mirror_enable=bool(payload.get("cut_mirror_enable", False)),
             cut_mirror_sec=int(payload.get("cut_mirror_sec", 5)),
             # --- bgm ---

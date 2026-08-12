@@ -118,6 +118,21 @@ from soni_translate.audio_segments import (
 VOICE_BASE_SPEED = 1.1
 SMART_PACK = False
 STRETCH_VIDEO_TO_VOICE = False
+
+# One-click color-grade presets (copied from the media-processor service).
+# Applied as ffmpeg filter chains on the pre-dub video.
+COLOR_GRADES = {
+    "cinematic": "eq=contrast=1.15:brightness=0.03:saturation=1.2",
+    "vibrant": "eq=saturation=1.35:contrast=1.05",
+    "beautify": "eq=brightness=0.05:contrast=1.05:saturation=1.15,unsharp=3:3:0.5:3:3:0.5",
+    "warm": "colorchannelmixer=.393:.769:.189:0:.349:.686:.168:0:.272:.534:.131:0",
+    "cool": "colorchannelmixer=.3:.3:.3:0:.3:.3:.3:0:.8:.8:.8:0",
+    "vintage": "colorchannelmixer=.393:.769:.189:0:.349:.686:.168:0:.272:.534:.131:0",
+    "grayscale": "colorchannelmixer=.3:.59:.11:0:.3:.59:.11:0:.3:.59:.11:0",
+    "dramatic": "eq=contrast=1.3:brightness=-0.02:saturation=0.6",
+    "faded": "eq=contrast=0.85:brightness=0.08:saturation=0.9",
+}
+
 os.environ["SONI_VOICE_SPEED"] = str(VOICE_BASE_SPEED)
 os.environ["SONI_SMART_PACK"] = "0"
 os.environ["SONI_VOICE_SPEED_LOCK"] = "1"  # never exceed base
@@ -581,6 +596,7 @@ class SoniTranslate(SoniTrCache):
         edit_gamma=1.0,
         edit_hue=0.0,
         edit_warmth=0.0,
+        color_grade='none',
         edit_lut=None,
         cut_mirror_enable=False,
         cut_mirror_sec=5,
@@ -588,6 +604,7 @@ class SoniTranslate(SoniTrCache):
         bgm_volume=15,
         bgm_preset=None,
         lut_preset=None,
+        output_speed=1.0,
         is_gui=False,
         progress=gr.Progress(),
     ):
@@ -912,6 +929,11 @@ class SoniTranslate(SoniTrCache):
                         )
                     if _eq:
                         _vf.extend(_eq)
+                    if color_grade and color_grade != "none" \
+                            and color_grade in COLOR_GRADES:
+                        # One-click color-grade preset (media-processor style)
+                        for _part in COLOR_GRADES[color_grade].split(","):
+                            _vf.append(_part)
                     _lutp = None
                     if lut_preset:
                         _lutp = os.path.join("assets", "lut", lut_preset)
@@ -1734,6 +1756,30 @@ class SoniTranslate(SoniTrCache):
                     logger.error(f"BGM mix failed: {_rc.stderr[-400:]}")
             except Exception as _e:
                 logger.error(f"BGM mix exception: {_e}")
+
+        # Adjust playback speed of the FINISHED dubbed video (setpts video,
+        # atempo audio — pitch preserved). Lets the video sync to the voice.
+        try:
+            import subprocess as _sp
+            _os = float(output_speed or 1.0)
+            if abs(_os - 1.0) > 1e-3 and os.path.isfile(video_output_file):
+                _spd = max(0.5, min(1.5, _os))
+                _sp_out = video_output_file + ".speed.mp4"
+                _rc = _sp.run([
+                    "ffmpeg", "-y", "-i", video_output_file,
+                    "-vf", f"setpts=PTS/{_spd:.4f}",
+                    "-af", f"atempo={_spd:.4f}",
+                    "-c:v", "libx264", "-preset", "fast", "-crf", "20",
+                    "-c:a", "aac", "-b:a", "192k",
+                    "-movflags", "+faststart", _sp_out,
+                ], capture_output=True, text=True)
+                if _rc.returncode == 0 and os.path.isfile(_sp_out):
+                    os.replace(_sp_out, video_output_file)
+                    logger.info(f"Output speed adjusted: {_spd:.2f}x")
+                else:
+                    logger.error(f"Speed pass failed: {_rc.stderr[-300:]}")
+        except Exception as _e:
+            logger.error(f"Speed pass exception: {_e}")
 
         output = media_out(
             media_file,
