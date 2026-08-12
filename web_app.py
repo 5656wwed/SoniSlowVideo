@@ -159,7 +159,7 @@ def _run_job(job_id):
             bgm_file=_NamedPath(payload["bgm_path"]) if payload.get("bgm_path") else None,
             bgm_volume=int(payload.get("bgm_volume", 15)),
             bgm_preset=None,
-            enable_cache=True,
+            enable_cache=False,
             is_gui=True,
             progress=_Progress(job_id),
         )
