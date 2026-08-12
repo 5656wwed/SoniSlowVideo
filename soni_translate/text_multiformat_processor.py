@@ -3,6 +3,40 @@ try:
     from whisperx.utils import get_writer
 except Exception:
     get_writer = None  # whisperx not installed — caption writer only used with transcription
+
+def _srt_writer(result, filename, word_options=None, **kwargs):
+    """Fallback SRT writer for CPU/no-whisperx mode. Compatible with the
+    whisperx get_writer(...)(result, filename, word_options) call signature."""
+    try:
+        import srt as _srt
+        from datetime import timedelta
+    except Exception:
+        logger.error("srt package not available for fallback writer")
+        return
+    subs = []
+    for seg in result.get("segments", []):
+        start = seg.get("start", 0.0)
+        end = seg.get("end", start + 1.0)
+        text = seg.get("text", "").strip()
+        if not text:
+            continue
+        subs.append(_srt.Subtitle(
+            index=len(subs) + 1,
+            start=timedelta(seconds=max(0.0, start)),
+            end=timedelta(seconds=max(0.0, end)),
+            content=text,
+        ))
+    # whisperx writes the file with the output_format extension, replacing the
+    # passed-in filename's extension (the caller passes "sub_ori.mp3" / "sub_tra.mp3").
+    if not filename.lower().endswith(".srt"):
+        filename = os.path.splitext(filename)[0] + ".srt"
+    with open(filename, "w", encoding="utf-8") as f:
+        f.write(_srt.compose(subs))
+
+if get_writer is None:
+    def get_writer(extension="srt", output_dir=".", **kw):
+        return _srt_writer
+
 from .utils import remove_files, run_command, remove_directory_contents
 from typing import List
 import srt
@@ -82,6 +116,25 @@ def srt_file_to_segments(file_path, speaker=False):
                     "end": float(segment.end.total_seconds()),
                 }
             )
+
+    # Resolve overlapping cues so two lines never play at the same time.
+    # Shorten the EARLIER cue's end to just before the next cue's start —
+    # every cue keeps its start time, so captions stay synced to the video.
+    if segments:
+        segments.sort(key=lambda s: s["start"])
+        GAP = 0.05
+        for i in range(len(segments) - 1):
+            nxt_start = segments[i + 1]["start"]
+            if segments[i]["end"] > nxt_start - GAP:
+                # clamp the earlier line so it ends right before the next begins
+                new_end = max(segments[i]["start"] + GAP, nxt_start - GAP)
+                segments[i]["end"] = round(new_end, 3)
+        # guard against degenerate/fully-contained cues
+        segments = [
+            {**seg,
+             "end": round(max(seg["end"], seg["start"] + GAP), 3)}
+            for seg in segments
+        ]
 
     if not segments:
         raise Exception("No data found in srt subtitle file")
