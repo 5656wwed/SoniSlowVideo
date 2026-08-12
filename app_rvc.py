@@ -471,6 +471,7 @@ class SoniTranslate(SoniTrCache):
         caption_glow=False,
         caption_glow_color="#FFD400",
         caption_glow_strength=6,
+        caption_style="highlight",
         enable_cache=True,
         custom_voices=False,
         custom_voices_workers=1,
@@ -750,17 +751,25 @@ class SoniTranslate(SoniTrCache):
                     except Exception:
                         _ew = _eh = 0
                     _vf = []
+                    # Track the current frame size as we build the chain, so the
+                    # manual crop can be clamped to it (a UI crop box bigger than
+                    # the source makes ffmpeg's crop filter crash with
+                    # "non positive size for width/height").
+                    _cwin, _chin = (_ew, _eh) if _ew and _eh else (0, 0)
                     if edit_zoom and edit_zoom > 100 and _ew and _eh:
                         _zw = max(2, int(_ew * 100.0 / edit_zoom))
                         _zh = max(2, int(_eh * 100.0 / edit_zoom))
+                        _cwin, _chin = _zw, _zh
                         _vf.append(
                             f"crop={_zw}:{_zh}:(in_w-{_zw})/2:(in_h-{_zh})/2"
                         )
-                    if edit_crop_w and edit_crop_h:
-                        _vf.append(
-                            f"crop={int(edit_crop_w)}:{int(edit_crop_h)}:"
-                            f"{int(edit_crop_x)}:{int(edit_crop_y)}"
-                        )
+                    if edit_crop_w and edit_crop_h and _cwin and _chin:
+                        _cx = max(0, min(int(edit_crop_x), _cwin - 1))
+                        _cy = max(0, min(int(edit_crop_y), _chin - 1))
+                        _cw = min(int(edit_crop_w), _cwin - _cx)
+                        _ch = min(int(edit_crop_h), _chin - _cy)
+                        if _cw > 0 and _ch > 0:
+                            _vf.append(f"crop={_cw}:{_ch}:{_cx}:{_cy}")
                     if (edit_bright or edit_contrast != 1.0
                             or edit_sat != 1.0 or edit_gamma != 1.0):
                         _vf.append(
@@ -863,9 +872,21 @@ class SoniTranslate(SoniTrCache):
                     prog_disp(
                         "From SRT file...", 0.30, is_gui, progress=progress
                     )
-                    audio = whisperx.load_audio(
-                        base_audio_wav if not self.vocals else self.vocals
-                    )
+                    if whisperx is not None:
+                        audio = whisperx.load_audio(
+                            base_audio_wav if not self.vocals else self.vocals
+                        )
+                    else:
+                        # No whisperx (CPU/no-GPU): load audio with soundfile.
+                        # In SRT+sentence mode `audio` is only needed by
+                        # alignment, which is skipped — this keeps it defined.
+                        try:
+                            import soundfile as _sf
+                            audio = _sf.read(
+                                base_audio_wav if not self.vocals else self.vocals
+                            )[0].astype("float32")
+                        except Exception:
+                            audio = None
                     # speaker=True → SPEAKER_00 on every line (no diarize needed)
                     self.result = srt_file_to_segments(
                         subtitle_file, speaker=True
@@ -1344,7 +1365,12 @@ class SoniTranslate(SoniTrCache):
                 try:
                     logger.info("Burn subtitles")
                     remove_files(vid_subs)
-                    if caption_enable and os.path.isfile("sub_tra.srt"):
+                    # Prefer the user's ORIGINAL SRT for caption burn so text+timing
+                    # match exactly what they uploaded (not the re-chunked copy).
+                    _cap_src = "sub_tra.srt"
+                    if subtitle_file and os.path.isfile(subtitle_file):
+                        _cap_src = subtitle_file
+                    if caption_enable and os.path.isfile(_cap_src):
                         # CapCut-style captions: generate styled ASS + burn
                         _pw, _ph = 1280, 720
                         try:
@@ -1359,7 +1385,7 @@ class SoniTranslate(SoniTrCache):
                             pass
                         _capass = "sub_tra_cap.ass"
                         make_caption_ass(
-                            "sub_tra.srt", _capass,
+                            _cap_src, _capass,
                             font_size_px=int(caption_size or 0),
                             text_color=caption_color or "#FFFFFF",
                             hl_color=caption_hl or "#FFD400",
@@ -1370,6 +1396,7 @@ class SoniTranslate(SoniTrCache):
                             glow_color=caption_glow_color or "#FFD400",
                             glow_strength=int(caption_glow_strength or 6),
                             play_w=_pw, play_h=_ph,
+                            style=caption_style or "highlight",
                         )
                         command = (
                             f"ffmpeg -i {base_video_file} -y -vf "
