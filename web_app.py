@@ -37,7 +37,10 @@ def get_engine():
     with _engine_lock:
         if _engine is None:
             from app_rvc import SoniTranslate  # imports gradio internally, but no GUI
-            _engine = SoniTranslate(cpu_mode=True)
+            # cpu_mode is on by default; set SONI_CPU_MODE=0 to let GPU be used
+            # (e.g. on Colab for faster Kokoro).
+            _cmode = os.environ.get("SONI_CPU_MODE", "1") != "0"
+            _engine = SoniTranslate(cpu_mode=_cmode)
     return _engine
 
 # --- job store (in-memory; single serial worker) ---
@@ -616,8 +619,12 @@ async def pocket_clone(name: str = Form(...), file: UploadFile = File(...)):
     return {"name": voice_name, "filename": out_path.name,
             "clones": sorted(f.stem for f in POCKET_VOICES_DIR.glob("*.safetensors"))}
 
-# Serve the mock frontend (design) as the web root
-WEB_DIR = Path(__file__).resolve().parent.parent / "web_frontend"
+# Serve the frontend as the web root. Works both when the frontend is checked
+# into the repo (Colab clone: <repo>/web_frontend) and when it lives as a
+# sibling next to the repo (VPS: <repo>/../web_frontend).
+_inrepo = Path(__file__).resolve().parent / "web_frontend"
+_sibling = Path(__file__).resolve().parent.parent / "web_frontend"
+WEB_DIR = _inrepo if (_inrepo / "index.html").exists() else _sibling
 if WEB_DIR.exists():
     app.mount("/static", StaticFiles(directory=str(WEB_DIR)), name="static")
 

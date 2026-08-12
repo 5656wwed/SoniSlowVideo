@@ -1,0 +1,818 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Gudmarv Easy dubbing — Editor</title>
+<style>
+  :root{
+    --bg:#0b0e14; --panel:#131722; --panel2:#1a2030; --line:#232b3d;
+    --text:#eef2f9; --dim:#9aa7bd; --faint:#5c6880;
+    --accent:#7c6cff; --accent2:#ff6b8a; --ok:#2ecc71; --crop:#ffd400;
+  }
+  *{margin:0;padding:0;box-sizing:border-box}
+  body{background:var(--bg);color:var(--text);font-family:'Inter',-apple-system,Segoe UI,Roboto,sans-serif;line-height:1.55;padding:0 0 60px}
+  .wrap{max-width:1100px;margin:0 auto;padding:0 20px}
+  header{position:sticky;top:0;background:rgba(11,14,20,.85);backdrop-filter:blur(10px);border-bottom:1px solid var(--line);padding:14px 0;z-index:50}
+  .bar{display:flex;align-items:center;justify-content:space-between}
+  .brand{display:flex;align-items:center;gap:10px;font-weight:700;font-size:17px}
+  .mark{width:30px;height:30px;border-radius:8px;background:linear-gradient(135deg,var(--accent),var(--accent2));display:grid;place-items:center;font-size:15px}
+  .pill{font-size:12px;color:var(--accent);border:1px solid var(--accent);border-radius:999px;padding:4px 10px;opacity:.9}
+  h1{font-size:26px;margin:26px 0 4px;letter-spacing:-.02em}
+  .lede{color:var(--dim);font-size:14px;margin-bottom:20px}
+  .notice{background:rgba(124,108,255,.10);border:1px solid rgba(124,108,255,.30);border-radius:12px;padding:12px 16px;font-size:13px;color:var(--dim);margin-bottom:22px}
+  .notice b{color:var(--text)}
+  .step{background:var(--panel);border:1px solid var(--line);border-radius:16px;padding:20px 22px;margin-bottom:18px}
+  .step-h{display:flex;align-items:center;gap:12px;margin-bottom:14px}
+  .num{width:26px;height:26px;border-radius:50%;background:linear-gradient(135deg,var(--accent),var(--accent2));display:grid;place-items:center;font-size:13px;font-weight:700;flex-shrink:0}
+  .step-h h2{font-size:16px}
+  .step-h .sub{font-size:12px;color:var(--faint);margin-left:auto}
+  .row{display:flex;gap:12px;flex-wrap:wrap;align-items:center}
+  label{display:block;font-size:12px;color:var(--dim);margin-bottom:6px}
+  .field{flex:1;min-width:150px}
+  .slider{width:100%;accent-color:var(--accent)}
+  .val{font-size:12px;color:var(--accent);font-variant-numeric:tabular-nums}
+  .btn{display:inline-flex;align-items:center;gap:8px;padding:10px 16px;border-radius:10px;border:1px solid var(--line);background:var(--panel2);color:var(--text);font-size:13px;font-weight:600;cursor:pointer;transition:.15s}
+  .btn:hover{border-color:var(--accent)}
+  .btn.primary{background:linear-gradient(135deg,var(--accent),var(--accent2));border:none;color:#fff;padding:12px 20px}
+  .btn.outline{background:transparent}
+  .btn.on{border-color:var(--crop);color:var(--crop)}
+  .btn:disabled{opacity:.5;cursor:not-allowed}
+  .drop{width:100%;padding:9px 12px;border-radius:9px;border:1px solid var(--line);background:var(--panel2);color:var(--text);font-size:13px}
+  .check{display:flex;align-items:center;gap:8px;font-size:13px;color:var(--dim);cursor:pointer}
+  .check input{accent-color:var(--accent);width:16px;height:16px}
+  .badge{font-size:11px;letter-spacing:.08em;text-transform:uppercase;color:var(--faint)}
+  .chips{display:flex;gap:8px;flex-wrap:wrap}
+  .chip{padding:5px 12px;border-radius:999px;font-size:12px;border:1px solid var(--line);color:var(--dim);cursor:pointer}
+  .chip.on{background:rgba(124,108,255,.16);color:var(--accent);border-color:var(--accent)}
+  .seg-btn{padding:6px 14px;border-radius:999px;font-size:12px;border:1px solid var(--line);color:var(--dim);background:transparent;cursor:pointer}
+  .seg-btn.on{background:rgba(124,108,255,.16);color:var(--accent);border-color:var(--accent);font-weight:600}
+  /* upload */
+  .upload{width:100%;padding:26px;border:1.5px dashed var(--line);border-radius:14px;text-align:center;color:var(--dim);cursor:pointer;transition:.15s;background:var(--panel2)}
+  .upload.drag{background:rgba(124,108,255,.10);border-color:var(--accent)}
+  .upload input{display:none}
+  .fname{font-size:12px;color:var(--accent);margin-top:8px;word-break:break-all}
+  /* player stage */
+  .stage{position:relative;width:100%;border-radius:14px;overflow:hidden;border:1px solid var(--line);background:#000;line-height:0;aspect-ratio:16/9;margin-top:12px}
+  .stage video{width:100%;height:100%;object-fit:contain;display:block}
+  .stage canvas{position:absolute;inset:0;width:100%;height:100%;cursor:crosshair;pointer-events:none;touch-action:none}
+  .stage canvas.active{pointer-events:auto}
+  .mode-hint{position:absolute;top:10px;left:10px;background:rgba(0,0,0,.65);color:var(--crop);font-size:12px;padding:6px 10px;border-radius:8px;z-index:5;display:none}
+  .caps{position:absolute;left:50%;bottom:9%;transform:translateX(-50%);background:rgba(0,0,0,.62);border-radius:8px;padding:8px 14px;font-family:Arial,Helvetica,sans-serif;font-weight:800;font-size:24px;color:#fff;text-align:center;line-height:1.2;white-space:nowrap;z-index:6;display:none}
+  .caps b{color:var(--crop)}
+  .crop-coords{font-size:12px;color:var(--crop);margin-top:8px;font-variant-numeric:tabular-nums}
+  .hintline{font-size:12px;color:var(--faint);margin-top:6px}
+  /* status */
+  .status{display:none;align-items:center;gap:12px;padding:14px 16px;border-radius:12px;margin:18px 0;font-size:14px}
+  .status.show{display:flex}
+  .status.running{background:rgba(124,108,255,.10);border:1px solid rgba(124,108,255,.35)}
+  .status.done{background:rgba(46,204,113,.10);border:1px solid rgba(46,204,113,.35)}
+  .status.error{background:rgba(255,107,107,.10);border:1px solid rgba(255,107,107,.4)}
+  .spinner{width:16px;height:16px;border:2px solid var(--faint);border-top-color:var(--accent);border-radius:50%;animation:spin .8s linear infinite}
+  @keyframes spin{to{transform:rotate(360deg)}}
+  .result-video{width:100%;border-radius:14px;border:1px solid var(--line);background:#000;margin-top:10px}
+</style>
+</head>
+<body>
+<header><div class="wrap bar">
+  <div class="brand"><span class="mark">🎬</span> Gudmarv Easy dubbing <span class="pill">Editor</span></div>
+  <span class="badge">self-hosted · CPU</span>
+</div></header>
+
+<div class="wrap">
+  <h1>Gudmarv Easy dubbing — edit, caption &amp; dub</h1>
+  <p class="lede">📤 Upload a video + SRT → 🔲 draw a crop box → 🎨 pick LUT/colors → 💬 captions → 🎤 choose a voice → 🎵 music → ▶️ Run. Everything renders on your own server.</p>
+  <div class="notice"><b>Note:</b> <b>Crop</b> and <b>color</b> show live in the browser while you set them; the <b>final video</b> applies them server-side. The SRT is used as-is (no transcription/whisper needed).</div>
+
+  <!-- Step 1 Upload -->
+  <div class="step">
+    <div class="step-h"><span class="num">1</span><h2>Upload</h2><span class="sub">video + SRT</span></div>
+    <div class="row">
+      <div class="field"><label>Video (.mp4)</label><div class="upload" id="vidDrop">⬆ Drop File Here <br><small>- or - click to upload</small><input type="file" id="vidFile" accept="video/*"></div><div class="fname" id="vidName"></div></div>
+      <div class="field"><label>Subtitles (.srt)</label><div class="upload" id="srtDrop">⬆ Drop File Here <br><small>- or - click to upload</small><input type="file" id="srtFile" accept=".srt,text/plain"></div><div class="fname" id="srtName"></div></div>
+    </div>
+    <div class="row" style="margin-top:14px">
+      <div class="field" style="min-width:200px"><label>Video language (required for SRT)</label>
+        <select class="drop" id="originLang">
+          <option>Automatic detection</option>
+          <option selected>English (en)</option>
+          <option>Spanish (es)</option>
+          <option>French (fr)</option>
+          <option>German (de)</option>
+          <option>Portuguese (pt)</option>
+          <option>Italian (it)</option>
+          <option>Japanese (ja)</option>
+          <option>Korean (ko)</option>
+          <option>Chinese (zh)</option>
+          <option>Russian (ru)</option>
+          <option>Arabic (ar)</option>
+          <option>Hindi (hi)</option>
+        </select>
+      </div>
+    </div>
+  </div>
+
+  <!-- Step 2 Crop -->
+  <div class="step">
+    <div class="step-h"><span class="num">2</span><h2>Crop</h2><span class="sub">draw on the video</span></div>
+    <div class="row" style="margin-bottom:12px">
+      <button class="btn outline" id="toggleDraw">📐 Draw crop box</button>
+      <button class="btn outline" id="clearCrop">✕ Clear crop</button>
+      <span class="crop-coords" id="coords">no crop</span>
+    </div>
+    <div class="stage" id="stage">
+      <div class="mode-hint" id="modeHint">✂️ Drag to set the crop region</div>
+      <video id="vid" controls playsinline></video>
+      <canvas id="cv"></canvas>
+    </div>
+    <p class="hintline">Hit <b>Draw crop box</b>, then drag a rectangle right on the video. The crop clips live and is applied in the final render.</p>
+  </div>
+
+  <!-- Step 3 Color -->
+  <div class="step">
+    <div class="step-h"><span class="num">3</span><h2>Color &amp; LUT</h2><span class="sub">live look</span></div>
+    <div class="row">
+      <div class="field"><label>Brightness <span class="val" id="vB">0.00</span></label><input class="slider" id="sB" type="range" min="-0.4" max="0.4" step="0.05" value="0"></div>
+      <div class="field"><label>Contrast <span class="val" id="vC">1.00</span></label><input class="slider" id="sC" type="range" min="0.5" max="1.8" step="0.05" value="1"></div>
+      <div class="field"><label>Saturation <span class="val" id="vS">1.00</span></label><input class="slider" id="sS" type="range" min="0" max="2" step="0.05" value="1"></div>
+      <div class="field"><label>Hue <span class="val" id="vH">0</span></label><input class="slider" id="sH" type="range" min="-40" max="40" step="1" value="0"></div>
+      <div class="field"><label>Warmth <span class="val" id="vW">0.00</span></label><input class="slider" id="sW" type="range" min="-1" max="1" step="0.05" value="0"></div>
+    </div>
+    <div style="margin-top:14px">
+      <div style="display:flex;gap:8px;margin-bottom:10px" id="presetSeg">
+        <button type="button" class="seg-btn" data-view="grade">🎨 One-click grade</button>
+        <button type="button" class="seg-btn on" data-view="lut">🎞 LUT presets</button>
+      </div>
+      <div id="gradeView" style="display:none">
+      <div class="chips" id="gradeChips">
+        <span class="chip on" data-grade="none">None</span>
+        <span class="chip" data-grade="cinematic">Cinematic</span>
+        <span class="chip" data-grade="vibrant">Vibrant</span>
+        <span class="chip" data-grade="beautify">Beautify</span>
+        <span class="chip" data-grade="warm">Warm</span>
+        <span class="chip" data-grade="cool">Cool</span>
+        <span class="chip" data-grade="vintage">Vintage</span>
+        <span class="chip" data-grade="grayscale">B&amp;W</span>
+        <span class="chip" data-grade="dramatic">Dramatic</span>
+        <span class="chip" data-grade="faded">Faded</span>
+      </div>
+      </div>
+      <div id="lutView">
+      <div class="chips">
+      <span class="chip on" data-lut="none">None</span>
+      <span class="chip" data-lut="Vintage-Faded">Vintage-Faded</span>
+      <span class="chip" data-lut="Cinematic-Teal">Cinematic-Teal</span>
+      <span class="chip" data-lut="Warm-Gold">Warm-Gold</span>
+      <span class="chip" data-lut="Warm-Glow">Warm-Glow</span>
+      <span class="chip" data-lut="Cool-Icy">Cool-Icy</span>
+      <span class="chip" data-lut="Vivid-Punch">Vivid-Punch</span>
+      <span class="chip" data-lut="Bleach-Bypass">Bleach-Bypass</span>
+      <span class="chip" data-lut="Mono">Mono</span>
+      <span class="chip" data-lut="Moody-Monochrome">Moody-Mono</span>
+      <span class="chip" data-lut="Amber-Faded-Classic">Amber-Faded</span>
+      <span class="chip" data-lut="Bright-Daylight">Bright-Daylight</span>
+      <span class="chip" data-lut="Eerie-Olive-Horror">Eerie-Olive</span>
+      <span class="chip" data-lut="custom" id="customLutChip">🎛 Custom (.cube)</span>
+    </div>
+    <div class="upload" id="lutDrop" style="margin-top:10px;padding:14px;display:none">⬆ Upload LUT (.cube)<input type="file" id="lutFile" accept=".cube"></div>
+    <div class="fname" id="lutName"></div>
+    <div id="lutPrevWrap" style="display:none;margin-top:10px"><img id="lutPrevImg" alt="LUT preview" style="width:100%;border-radius:10px;border:1px solid var(--line)"></div>
+    <div class="field" style="margin-top:12px"><label>Saved LUTs (library)</label>
+      <select class="drop" id="savedLut" style="width:100%"><option value="">— pick a saved LUT —</option></select>
+    </div>
+    <p class="hintline">Pick a preset above, upload your own <b>.cube</b> to save it to the library, or reuse any saved LUT below.</p>
+      </div>
+    </div>
+  </div>
+
+  <!-- Step 4 Cut & mirror -->
+  <div class="step">
+    <div class="step-h"><span class="num">4</span><h2>Cut &amp; mirror</h2><span class="sub">render step</span></div>
+    <div class="row">
+      <label class="check"><input type="checkbox" id="cutOn"> Cut every <b style="margin:0 4px">5</b> sec, 1st normal / 2nd flipped…</label>
+    </div>
+  </div>
+
+  <!-- Step 5 Voice & dubbing -->
+  <div class="step">
+    <div class="step-h"><span class="num">5</span><h2>Voice &amp; dubbing</h2><span class="sub">pick an engine, then a voice</span></div>
+    <div class="chips" style="margin-bottom:12px" id="engineTabs">
+      <span class="chip on" data-engine="edge">🌐 Edge-TTS</span>
+      <span class="chip" data-engine="pocket">🐸 Pocket-TTS</span>
+      <span class="chip" data-engine="kokoro">🍣 Kokoro</span>
+    </div>
+    <div class="field">
+      <label>🎤 Dubbing voice</label>
+      <input class="drop" id="voiceSearch" type="text" placeholder="🔍 Search voice… (type to filter)" style="margin-bottom:8px">
+      <select class="drop" id="voiceSel" size="10" style="height:auto;min-height:120px"><option value="">loading voices…</option></select>
+      <div style="font-size:11px;color:var(--faint);margin-top:6px" id="voiceCount"></div>
+    </div>
+    <!-- Pocket clone upload (only shown on the Pocket tab) -->
+    <div id="cloneSection" style="display:none;margin-top:12px;border:1px dashed var(--line);border-radius:12px;padding:14px">
+      <div style="font-weight:600;font-size:13px;margin-bottom:8px">🎙️ Clone a Pocket voice</div>
+      <div class="row">
+        <div class="field" style="min-width:160px"><label>Clone name</label><input class="drop" id="cloneName" type="text" placeholder="e.g. myvoice"></div>
+        <div class="field" style="min-width:180px"><label>Voice sample (.wav/.ogg/.mp3)</label>
+          <div class="upload" id="cloneDrop">⬆ Drop audio<input type="file" id="cloneFile" accept="audio/*"></div>
+          <div class="fname" id="cloneFileName"></div>
+        </div>
+      </div>
+      <button class="btn primary" id="cloneBtn" style="margin-top:10px">🎙️ Create Clone</button>
+      <div style="font-size:11px;color:var(--dim);margin-top:8px" id="cloneMsg"></div>
+      <div style="font-size:11px;color:var(--dim);margin-top:8px" id="cloneList"></div>
+    </div>
+    <div class="row" style="margin-top:12px">
+      <div class="field"><label>🔇 Original audio <span class="val" id="vOrig">0</span>%</label><input class="slider" id="origVol" type="range" min="0" max="100" step="5" value="0"></div>
+      <div class="field"><label>🔊 Dubbed voice <span class="val" id="vDub">100</span>%</label><input class="slider" id="dubVol" type="range" min="10" max="200" step="5" value="100"></div>
+    </div>
+    <p class="hintline">Pick an engine tab above, then choose its voice. Pocket-TTS lets you clone your own voice with a short sample. Original audio defaults to <b>0%</b> (muted) so you hear only the dub.</p>
+    <div class="step-h" style="margin-top:14px"><h3 style="font-size:14px">⏱ Voice speed <span class="sub">per engine · 0.5× slow – 1.5× fast</span></h3></div>
+    <div class="row" style="grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:10px">
+      <div class="field"><label>🌐 Edge <span class="val" id="vEdge">1.00</span>×</label><input class="slider" id="sEdge" type="range" min="0.5" max="1.5" step="0.05" value="1"></div>
+      <div class="field"><label>🐸 Pocket <span class="val" id="vPocket">1.00</span>×</label><input class="slider" id="sPocket" type="range" min="0.5" max="1.5" step="0.05" value="1"></div>
+      <div class="field"><label>🍣 Kokoro <span class="val" id="vKokoro">1.10</span>×</label><input class="slider" id="sKokoro" type="range" min="0.5" max="1.5" step="0.05" value="1.1"></div>
+    </div>
+    <div class="field" style="margin-top:12px;max-width:420px">
+      <label>🎬 Output speed (after dubbing) <span class="val" id="vOutSpd">1.00</span>× <span class="sub">sync the finished video to the voice</span></label>
+      <input class="slider" id="sOutSpd" type="range" min="0.5" max="1.5" step="0.01" value="1">
+    </div>
+  </div>
+
+  <!-- Step 6 Music -->
+  <div class="step">
+    <div class="step-h"><span class="num">6</span><h2>Background music</h2><span class="sub">optional</span></div>
+    <div class="row">
+      <div class="field" style="min-width:180px"><label>🎵 Music file</label><div class="upload" id="bgmDrop">⬆ Drop music (mp3/wav)<input type="file" id="bgmFile" accept="audio/*"></div><div class="fname" id="bgmName"></div></div>
+      <div class="field"><label>Music volume <span class="val" id="vBgm">15</span>%</label><input class="slider" id="bgmVol" type="range" min="0" max="100" step="1" value="15"></div>
+    </div>
+  </div>
+
+  <!-- Captions -->
+  <div class="step">
+    <div class="step-h"><span class="num">7</span><h2>Captions (CapCut style)</h2><span class="sub">burned on output</span></div>
+    <label class="check"><input type="checkbox" id="capsOn" checked> Burn captions on video (bold text, current word highlighted)</label>
+    <div class="chips" style="margin-top:12px">
+      <span class="chip on" data-style="highlight">✨ Highlight</span>
+      <span class="chip" data-style="plain">Plain</span>
+      <span class="chip" data-style="pop">Pop</span>
+      <span class="chip" data-style="box">Box</span>
+    </div>
+    <div class="chips" style="margin-top:12px">
+      <span class="chip on" data-pos="lower">Lower</span>
+      <span class="chip" data-pos="center">Center</span>
+      <span class="chip" data-pos="top">Top</span>
+    </div>
+    <div class="row" style="margin-top:14px">
+      <div class="field"><label>Font</label>
+        <select class="drop" id="capsFont">
+          <option value="Arial Black">Arial Black</option>
+          <option value="Impact">Impact</option>
+          <option value="Verdana">Verdana</option>
+          <option value="Georgia">Georgia</option>
+          <option value="Times New Roman">Times New Roman</option>
+          <option value="Courier New">Monospace</option>
+        </select>
+      </div>
+      <div class="field"><label>Size <span class="val" id="capsSizeV">24</span>px</label><input class="slider" id="capsSize" type="range" min="12" max="60" step="1" value="24"></div>
+      <div class="field"><label>Highlight <span class="val" id="vHl">#FFD400</span></label><input type="color" id="capsHl" value="#ffd400" style="height:38px;width:100%;background:var(--panel2);border:1px solid var(--line);border-radius:8px;padding:2px"></div>
+    </div>
+  </div>
+
+  <!-- Run -->
+  <div class="step" style="border-color:rgba(124,108,255,.4)">
+    <div class="row">
+      <button class="btn primary" id="runBtn">▶ Run Pipeline</button>
+      <button class="btn outline" id="testBtn">⚡ Test filter (no dub)</button>
+    </div>
+    <div class="status" id="status"></div>
+    <div id="resultWrap"></div>
+    <p style="font-size:12px;color:var(--dim);margin-top:12px">
+      <b style="color:var(--ok)">Test filter</b> = crop + color + LUT (no dubbing). <b style="color:var(--accent)">Run</b> = all that <i>then</i> dubs with the chosen voice. CPU renders take a while — this is normal.
+    </p>
+  </div>
+  <!-- Monitor -->
+  <div class="step">
+    <div class="step-h"><span class="num">8</span><h2>Monitor</h2><span class="sub">live render log + job history</span></div>
+    <div class="row" style="margin-bottom:10px">
+      <button class="btn outline" id="toggleLog">📋 Show log</button>
+      <button class="btn outline" id="refreshLog">🔄 Refresh</button>
+      <span style="font-size:12px;color:var(--faint)" id="logMeta"></span>
+    </div>
+    <pre id="logView" style="display:none;max-height:340px;overflow:auto;background:#0a0d13;border:1px solid var(--line);border-radius:10px;padding:12px;font-size:12px;line-height:1.5;color:#b8c4d8;white-space:pre-wrap;word-break:break-word"></pre>
+    <div id="jobList" style="margin-top:10px"></div>
+  </div>
+</div>
+
+<script>
+const $=id=>document.getElementById(id);
+const stage=$('stage'), vid=$('vid'), cv=$('cv'), ctx=cv.getContext('2d');
+let drawMode=false, box=null, drag=null, vidURL=null, srtFile=null, bgmFile=null;
+
+// ---- upload helpers ----
+function bindDrop(zone, input, onFile){
+  zone.addEventListener('click',()=>input.click());
+  input.addEventListener('change',()=>onFile(input.files[0]));
+  zone.addEventListener('dragover',e=>{e.preventDefault();zone.classList.add('drag');});
+  zone.addEventListener('dragleave',()=>zone.classList.remove('drag'));
+  zone.addEventListener('drop',e=>{e.preventDefault();zone.classList.remove('drag');onFile(e.dataTransfer.files[0]);});
+}
+function uploadOK(zoneId, nameEl, fileName, size){
+  const zone=$(zoneId);
+  zone.style.borderColor='#2ecc71';
+  zone.style.background='rgba(46,204,113,.08)';
+  zone.innerHTML='✅ Uploaded — click to change';
+  $(nameEl).textContent=fileName+(size?(' ('+(size/1024/1024).toFixed(1)+' MB)'):'');
+}
+function uploadFAIL(zoneId, nameEl, err){
+  const zone=$(zoneId);
+  zone.style.borderColor='#ff6b6b';
+  zone.style.background='rgba(255,107,107,.08)';
+  zone.innerHTML='❌ Upload failed — click to retry';
+  $(nameEl).textContent=(err||'error').slice(0,120);
+}
+
+// Upload a file immediately on selection, with a real progress bar in its box.
+function uploadNow(zoneId, nameEl, kind, file){
+  return new Promise((resolve,reject)=>{
+    if(!file){ reject(new Error('no file')); return; }
+    const zone=$(zoneId);
+    zone.style.borderColor='#7c6cff'; zone.style.background='rgba(124,108,255,.08)';
+    zone.innerHTML='<div style="text-align:center"><div>⬆ Uploading '+kind+'…</div>'
+      +'<div style="height:6px;background:rgba(255,255,255,.1);border-radius:4px;margin-top:8px;overflow:hidden"><div id="up'+kind+'" style="height:100%;width:0%;background:linear-gradient(90deg,#7c6cff,#ff6b8a);transition:width .2s;border-radius:4px"></div></div>'
+      +'<div style="font-size:11px;color:#9aa7bd;margin-top:4px" id="up'+kind+'txt">0%</div></div>';
+    const xhr=new XMLHttpRequest();
+    xhr.open('POST','/api/upload');
+    xhr.upload.onprogress=e=>{
+      if(e.lengthComputable){
+        const p=Math.round(e.loaded/e.total*100);
+        const bar=document.getElementById('up'+kind);
+        if(bar){ bar.style.width=p+'%'; }
+        const txt=document.getElementById('up'+kind+'txt');
+        if(txt) txt.textContent=p+'%';
+      }
+    };
+    xhr.onload=()=>{
+      if(xhr.status===200){
+        try{ const j=JSON.parse(xhr.responseText); uploadOK(zoneId,nameEl,file.name,j.size); resolve(j); }
+        catch(e){ uploadFAIL(zoneId,nameEl,'bad response'); reject(e); }
+      } else {
+        uploadFAIL(zoneId,nameEl,'HTTP '+xhr.status);
+        reject(new Error('upload failed '+xhr.status));
+      }
+    };
+    xhr.onerror=()=>{ uploadFAIL(zoneId,nameEl,'network error'); reject(new Error('network error')); };
+    xhr.upload.onerror=()=>{ uploadFAIL(zoneId,nameEl,'upload aborted'); reject(new Error('upload aborted')); };
+    xhr.send((()=>{const fd=new FormData();fd.append('kind',kind);fd.append('file',file);return fd;})());
+  });
+}
+let staged={video:null,srt:null,bgm:null,lut:null};
+bindDrop($('vidDrop'),$('vidFile'),f=>{
+  if(!f)return; staged.video=null;
+  // keep a local preview too
+  if(vidURL) URL.revokeObjectURL(vidURL);
+  vidURL=URL.createObjectURL(f); vid.src=vidURL;
+  vid.addEventListener('loadedmetadata',sizeCanvas);
+  uploadNow('vidDrop','vidName','video',f).then(j=>{staged.video=j;}).catch(()=>{});
+});
+bindDrop($('srtDrop'),$('srtFile'),f=>{
+  if(f){staged.srt=null; uploadNow('srtDrop','srtName','srt',f).then(j=>{staged.srt=j;}).catch(()=>{});}
+});
+bindDrop($('bgmDrop'),$('bgmFile'),f=>{
+  if(f){staged.bgm=null; uploadNow('bgmDrop','bgmName','bgm',f).then(j=>{staged.bgm=j;}).catch(()=>{});}
+});
+
+// ---- crop canvas ----
+function sizeCanvas(){const r=stage.getBoundingClientRect();cv.width=r.width;cv.height=r.height;draw();}
+window.addEventListener('resize',()=>{sizeCanvas();});
+function pos(e){const r=cv.getBoundingClientRect();return{x:e.clientX-r.left,y:e.clientY-r.top};}
+function draw(){
+  ctx.clearRect(0,0,cv.width,cv.height);
+  if(!box||!box.w)return;
+  ctx.strokeStyle='#ffd400';ctx.lineWidth=2;ctx.setLineDash([6,4]);
+  ctx.strokeRect(box.x,box.y,box.w,box.h);ctx.setLineDash([]);
+  ctx.fillStyle='rgba(255,212,0,.12)';ctx.fillRect(box.x,box.y,box.w,box.h);
+}
+function applyCrop(){
+  if(!box||!box.w||box.w<6){vid.style.clipPath='none';cropPx=null;return;}
+  const w=cv.width,h=cv.height, nx=box.x/w, ny=box.y/h, nw=box.w/w, nh=box.h/h;
+  vid.style.clipPath=`inset(${ny*100}% ${(1-nx-nw)*100}% ${(1-ny-nh)*100}% ${nx*100}% round 0px)`;
+  $('coords').textContent=`X ${Math.round(box.x)} · Y ${Math.round(box.y)} · W ${Math.round(box.w)} · H ${Math.round(box.h)}`;
+  cropPx = canvasToVideoPixels(box);
+}
+// Map a crop box drawn on the (16:9 letterboxed) canvas to REAL video pixels.
+let cropPx=null;
+function canvasToVideoPixels(b){
+  if(!vid.videoWidth||!vid.videoHeight) return null;
+  const vw=vid.videoWidth, vh=vid.videoHeight;
+  // stage/canvas aspect is 16:9; video is object-fit:contain -> compute its rect
+  const cw=cv.width, ch=cv.height;
+  const cAspect=cw/ch, vAspect=vw/vh;
+  let dvw,dvh,dx,dy;
+  if(vAspect>cAspect){ // video wider than canvas -> fit width
+    dvw=cw; dvh=cw/vAspect; dx=0; dy=(ch-dvh)/2;
+  } else { // video taller -> fit height
+    dvh=ch; dvw=ch*vAspect; dx=(cw-dvw)/2; dy=0;
+  }
+  // clamp box to video rect
+  const rx=Math.max(0, b.x-dx), ry=Math.max(0, b.y-dy);
+  const rw=Math.min(b.w, dvw-rx), rh=Math.min(b.h, dvh-ry);
+  if(rw<2||rh<2) return null;
+  // scale to real pixels
+  return {
+    x: Math.round(rx/dvw*vw),
+    y: Math.round(ry/dvh*vh),
+    w: Math.round(rw/dvw*vw),
+    h: Math.round(rh/dvh*vh),
+  };
+}
+function upd(){applyCrop();draw();}
+cv.addEventListener('mousedown',e=>{if(!drawMode)return;drag=pos(e);box={x:drag.x,y:drag.y,w:0,h:0};});
+cv.addEventListener('mousemove',e=>{if(!drag)return;const p=pos(e);box.x=Math.min(drag.x,p.x);box.y=Math.min(drag.y,p.y);box.w=Math.abs(p.x-drag.x);box.h=Math.abs(p.y-drag.y);upd();});
+window.addEventListener('mouseup',()=>{if(!drag)return;drag=null;if(box.w<6&&box.h<6){box=null;}upd();});
+$('toggleDraw').onclick=function(){
+  drawMode=!drawMode; cv.classList.toggle('active',drawMode); this.classList.toggle('on',drawMode);
+  $('modeHint').style.display=drawMode?'block':'none';
+  this.textContent=drawMode?'📐 Drawing… (click to stop)':'📐 Draw crop box';
+};
+$('clearCrop').onclick=()=>{box=null;upd();$('coords').textContent='no crop';vid.style.clipPath='none';};
+
+// ---- live color (browser preview) ----
+function applyFilters(){
+  const b=+$('sB').value,c=+$('sC').value,s=+$('sS').value,h=+$('sH').value,w=+$('sW').value;
+  $('vB').textContent=b.toFixed(2);$('vC').textContent=c.toFixed(2);$('vS').textContent=s.toFixed(2);$('vH').textContent=h;$('vW').textContent=w.toFixed(2);
+  let f=`brightness(${1+b}) contrast(${c}) saturate(${s}) hue-rotate(${h}deg)`;
+  if(w>0)f+=` sepia(${(w*0.5).toFixed(2)}) hue-rotate(${(-w*12).toFixed(1)}deg) saturate(${(1+w*0.3).toFixed(2)})`;
+  else if(w<0)f+=` sepia(${(-w*0.3).toFixed(2)}) hue-rotate(${(-w*20).toFixed(1)}deg) saturate(${(1+(-w)*0.2).toFixed(2)})`;
+  const lut=document.querySelector('.chip[data-lut].on').dataset.lut;
+  if(lut==='Vintage-Faded')f+=` sepia(.45) contrast(1.06) brightness(.98)`;
+  else if(lut==='Cinematic-Teal')f+=` sepia(.35) saturate(1.35) hue-rotate(-10deg) contrast(1.05)`;
+  else if(lut==='Warm-Gold')f+=` sepia(.6) saturate(1.4) hue-rotate(-15deg)`;
+  else if(lut==='Warm-Glow')f+=` sepia(.35) saturate(1.3) hue-rotate(-12deg) brightness(1.05)`;
+  else if(lut==='Cool-Icy')f+=` sepia(.15) saturate(1.15) hue-rotate(20deg) brightness(1.05)`;
+  else if(lut==='Vivid-Punch')f+=` saturate(1.5) contrast(1.15)`;
+  else if(lut==='Bleach-Bypass')f+=` saturate(.7) contrast(1.25)`;
+  else if(lut==='Mono')f+=` grayscale(1) contrast(1.1)`;
+  else if(lut==='Moody-Monochrome')f+=` grayscale(1) contrast(1.2)`;
+  else if(lut==='Amber-Faded-Classic')f+=` sepia(.6) saturate(1.15) hue-rotate(-20deg) brightness(.98)`;
+  else if(lut==='Bright-Daylight')f+=` brightness(1.08) saturate(1.1) contrast(.95)`;
+  else if(lut==='Eerie-Olive-Horror')f+=` sepia(.3) saturate(.85) hue-rotate(40deg) contrast(1.1) brightness(.95)`;
+  // One-click grade CSS approximation (media-processor presets) — live preview
+  const grade=(document.querySelector('#gradeChips .chip.on')||{}).dataset?.grade;
+  if(grade==='cinematic')f+=` contrast(1.15) saturate(1.2) brightness(1.03)`;
+  else if(grade==='vibrant')f+=` saturate(1.35) contrast(1.05)`;
+  else if(grade==='beautify')f+=` brightness(1.05) contrast(1.05) saturate(1.15)`;
+  else if(grade==='warm')f+=` sepia(.35) saturate(1.25) hue-rotate(-12deg)`;
+  else if(grade==='cool')f+=` saturate(1.1) hue-rotate(10deg) contrast(1.05)`;
+  else if(grade==='vintage')f+=` sepia(.5) contrast(1.08) saturate(1.1)`;
+  else if(grade==='grayscale')f+=` grayscale(1)`;
+  else if(grade==='dramatic')f+=` contrast(1.3) saturate(.6)`;
+  else if(grade==='faded')f+=` contrast(.85) brightness(1.08) saturate(.9)`;
+  vid.style.filter=f;
+  showLutPreview();
+}
+// Accurate backend preview of the real LUT (custom LUTs can't be CSS-previews).
+async function showLutPreview(){
+  const box=$('lutPrevWrap'); if(!box) return;
+  const lut=document.querySelector('.chip[data-lut].on').dataset.lut;
+  if(lut==='none' || !staged.video){ box.style.display='none'; return; }
+  const lut_custom=(lut==='custom' && staged.lut)?staged.lut.name:null;
+  try{
+    const r=await fetch('/api/lut_preview',{method:'POST',headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({video:staged.video.path,lut,lut_custom,
+        bright:+$('sB').value,contrast:+$('sC').value,sat:+$('sS').value,hue:+$('sH').value,warmth:+$('sW').value})});
+    if(!r.ok){ box.style.display='none'; return; }
+    const b=await r.blob();
+    const img=$('lutPrevImg'); img.src=URL.createObjectURL(b);
+    box.style.display='block';
+  }catch(e){ box.style.display='none'; }
+}
+['sB','sC','sS','sH','sW'].forEach(id=>$(id).addEventListener('input',applyFilters));
+document.querySelectorAll('.chip[data-lut]').forEach(ch=>ch.onclick=()=>{
+  document.querySelectorAll('.chip[data-lut]').forEach(x=>x.classList.remove('on'));ch.classList.add('on');
+  // LUT and one-click grade are mutually exclusive
+  document.querySelectorAll('#gradeChips .chip').forEach(x=>x.classList.remove('on'));
+  const gn=document.querySelector('#gradeChips .chip[data-grade="none"]'); if(gn) gn.classList.add('on');
+  applyFilters();
+  $('lutDrop').style.display = (ch.dataset.lut==='custom') ? 'block':'none';
+});
+// One-click grade chips (media-processor presets) — live CSS preview + at render
+document.querySelectorAll('#gradeChips .chip').forEach(ch=>ch.onclick=()=>{
+  document.querySelectorAll('#gradeChips .chip').forEach(x=>x.classList.remove('on'));
+  ch.classList.add('on');
+  // grade and LUT mutually exclusive
+  document.querySelectorAll('.chip[data-lut]').forEach(x=>x.classList.remove('on'));
+  const ln=document.querySelector('.chip[data-lut="none"]'); if(ln) ln.classList.add('on');
+  $('lutDrop').style.display='none';
+  applyFilters();
+});
+// Grade / LUT segmented toggle
+document.querySelectorAll('#presetSeg .seg-btn').forEach(btn=>btn.onclick=()=>{
+  document.querySelectorAll('#presetSeg .seg-btn').forEach(x=>x.classList.remove('on'));
+  btn.classList.add('on');
+  const v=btn.dataset.view;
+  $('gradeView').style.display=(v==='grade')?'block':'none';
+  $('lutView').style.display=(v==='lut')?'block':'none';
+});
+// LUT upload
+bindDrop($('lutDrop'),$('lutFile'),f=>{
+  if(!f)return; staged.lut=null;
+  uploadNow('lutDrop','lutName','lut',f).then(j=>{ staged.lut=j; $('lutName').textContent=j.name+' ✓'; showLutPreview(); loadSavedLuts(); }).catch(()=>{});
+});
+// Saved LUT library: list every .cube saved on the server and reuse it.
+async function loadSavedLuts(){
+  const sel=$('savedLut'); if(!sel) return;
+  try{
+    const r=await fetch('/api/luts'); const d=await r.json();
+    const cur=sel.value;
+    sel.innerHTML='<option value="">— pick a saved LUT —</option>'
+      +(d.luts||[]).map(l=>`<option value="${l}">${l}</option>`).join('');
+    if(cur) sel.value=cur;
+  }catch(e){}
+}
+$('savedLut').addEventListener('change',()=>{
+  const f=$('savedLut').value; if(!f) return;
+  document.querySelectorAll('.chip[data-lut]').forEach(x=>x.classList.remove('on'));
+  const cc=$('customLutChip'); if(cc) cc.classList.add('on');
+  $('lutDrop').style.display='block';
+  staged.lut={name:f};
+  $('lutName').textContent=f+' ✓';
+  applyFilters(); // also triggers the real LUT preview
+});
+loadSavedLuts();
+document.querySelectorAll('.chip[data-pos]').forEach(ch=>ch.onclick=()=>{document.querySelectorAll('.chip[data-pos]').forEach(x=>x.classList.remove('on'));ch.classList.add('on');});
+document.querySelectorAll('.chip[data-style]').forEach(ch=>ch.onclick=()=>{document.querySelectorAll('.chip[data-style]').forEach(x=>x.classList.remove('on'));ch.classList.add('on');});
+$('bgmVol').addEventListener('input',()=>{$('vBgm').textContent=$('bgmVol').value;});
+$('origVol').addEventListener('input',()=>{$('vOrig').textContent=$('origVol').value;});
+$('dubVol').addEventListener('input',()=>{$('vDub').textContent=$('dubVol').value;});
+[['sEdge','vEdge'],['sPocket','vPocket'],['sKokoro','vKokoro']]
+  .forEach(([sl,va])=>$(sl).addEventListener('input',()=>{$('v'+sl.slice(1)).textContent=(+$(sl).value).toFixed(2);}));
+$('sOutSpd').addEventListener('input',()=>{$('vOutSpd').textContent=(+$('sOutSpd').value).toFixed(2);});
+$('capsSize').addEventListener('input',()=>{$('capsSizeV').textContent=$('capsSize').value;});
+$('capsHl').addEventListener('input',()=>{$('vHl').textContent=$('capsHl').value;});
+
+// ---- voices grouped by engine ----
+let allVoices=[];
+let currentEngine='edge';
+function engineOf(v){
+  const low=v.toLowerCase();
+  if(low.includes('fishaudio') || low.includes('fish audio')) return 'fish';
+  if(low.includes('kokoro')) return 'kokoro';
+  if(low.includes('pocket')) return 'pocket';
+  return 'edge'; // edge has no engine tag
+}
+function renderVoices(){
+  const sel=$('voiceSel');
+  const f=$('voiceSearch').value.trim().toLowerCase();
+  let list = allVoices.filter(v=>engineOf(v)===currentEngine);
+  if(f) list = list.filter(v=>v.toLowerCase().includes(f));
+  sel.innerHTML='';
+  if(!list.length){ sel.innerHTML='<option value="">no voices match</option>'; }
+  list.forEach(v=>{const o=document.createElement('option');o.value=v;o.textContent=v;sel.appendChild(o);});
+  $('voiceCount').textContent=list.length+' '+currentEngine.toUpperCase()+' voices';
+}
+document.querySelectorAll('#engineTabs .chip').forEach(ch=>ch.onclick=()=>{
+  document.querySelectorAll('#engineTabs .chip').forEach(x=>x.classList.remove('on'));
+  ch.classList.add('on');
+  currentEngine=ch.dataset.engine;
+  $('cloneSection').style.display = (currentEngine==='pocket') ? 'block':'none';
+  $('voiceSearch').value='';
+  renderVoices();
+  if(currentEngine==='pocket') loadClones();
+});
+(async()=>{
+  try{
+    const r=await fetch('/api/voices'); const d=await r.json();
+    if(d.voices && d.voices.length) allVoices=d.voices;
+    renderVoices();
+    if(!d.voices || !d.voices.length) $('voiceSel').innerHTML='<option value="">no voices available</option>';
+  }catch(e){ $('voiceSel').innerHTML='<option value="">voices unavailable</option>'; }
+})();
+$('voiceSearch').addEventListener('input',renderVoices);
+
+// ---- Pocket clone ----
+let cloneFile=null;
+bindDrop($('cloneDrop'),$('cloneFile'),f=>{ if(f){cloneFile=f; $('cloneFileName').textContent=f.name;} });
+$('cloneBtn').onclick=async()=>{
+  const name=$('cloneName').value.trim();
+  if(!name){ alert('Enter a clone name.'); return; }
+  if(!cloneFile){ alert('Upload a voice sample first.'); return; }
+  $('cloneMsg').textContent='Cloning… this takes ~30s';
+  $('cloneBtn').disabled=true;
+  try{
+    const fd=new FormData();
+    fd.append('name',name);
+    fd.append('file',cloneFile);
+    const r=await fetch('/api/pocket/clone',{method:'POST',body:fd});
+    const j=await r.json();
+    if(!r.ok) throw new Error(j.detail||'clone failed');
+    $('cloneMsg').textContent='✅ Clone "'+j.name+'" created.';
+    loadClones();
+  }catch(e){ $('cloneMsg').textContent='❌ '+e.message; }
+  $('cloneBtn').disabled=false;
+};
+async function loadClones(){
+  try{
+    const r=await fetch('/api/pocket/clones'); const j=await r.json();
+    const list=(j.clones||[]).map(n=>'<span style="color:var(--accent)">'+n+'</span>').join(', ');
+    $('cloneList').innerHTML = (j.clones&&j.clones.length) ? ('Your clones: '+list) : 'No clones yet.';
+  }catch(e){ $('cloneList').textContent=''; }
+}
+
+// ---- run ----
+function showStatus(cls, html, spin){
+  const st=$('status'); st.className='status show '+cls;
+  st.innerHTML=(spin?'<div class="spinner"></div>':'')+html;
+}
+$('testBtn').onclick=()=>run(false);
+$('runBtn').onclick=()=>run(true);
+async function run(dub){
+  if(!staged.video){alert('Upload a video first.');return;}
+  if(dub && !staged.srt){alert('Upload an .srt file to dub.');return;}
+  const origin=$('originLang').value;
+  if(dub && origin==='Automatic detection'){alert('Pick the video language (SRT mode needs it).');return;}
+
+  const cq=document.querySelector('.chip[data-lut].on').dataset.lut;
+  const capPos=document.querySelector('.chip[data-pos].on').dataset.pos;
+  const payload={
+    origin_language: origin,
+    target_language: origin,
+    voice: dub ? ($('voiceSel').value||'en-US-EmmaMultilingualNeural-Female') : '',
+    volume_original_audio: +$('origVol').value/100,
+    volume_translated_audio: +$('dubVol').value/100,
+    caption_enable: $('capsOn').checked,
+    caption_size: +$('capsSize').value,
+    caption_hl: $('capsHl').value.toUpperCase(),
+    caption_pos: capPos,
+    caption_font: $('capsFont').value,
+    caption_karaoke: true,
+    caption_style: (document.querySelector('.chip[data-style].on')||{}).dataset?.style || 'highlight',
+    edit_crop_enable: !!(box && box.w>=6 && cropPx),
+    edit_crop_x: cropPx?cropPx.x:0,
+    edit_crop_y: cropPx?cropPx.y:0,
+    edit_crop_w: cropPx?cropPx.w:0,
+    edit_crop_h: cropPx?cropPx.h:0,
+    edit_bright: +$('sB').value,
+    edit_contrast: +$('sC').value,
+    edit_sat: +$('sS').value,
+    edit_hue: +$('sH').value,
+    edit_warmth: +$('sW').value,
+    lut: cq,
+    cut_mirror_enable: $('cutOn').checked,
+    cut_mirror_sec: 5,
+    bgm_volume: +$('bgmVol').value,
+    // per-engine narration speed sliders (0.5-1.5)
+    edge_speed: +$('sEdge').value,
+    pocket_speed: +$('sPocket').value,
+    kokoro_speed: +$('sKokoro').value,
+    output_speed: +$('sOutSpd').value,
+  };
+  // one-click color grade preset (media-processor) if a chip is active
+  const grade=(document.querySelector('#gradeChips .chip.on')||{}).dataset?.grade;
+  if(grade && grade!=='none') payload.color_grade=grade;
+  // custom LUT: if the "Custom" chip is selected and a .cube is uploaded, send its filename
+  if(cq==='custom' && staged.lut) payload.lut_custom = staged.lut.name;
+  // if not dubbing, clear voice so no TTS runs
+  if(!dub) payload.voice='';
+  // staged files (uploaded on selection) are referenced by path in the payload
+  if(staged.video) payload.media_path = staged.video.path;
+  if(staged.srt) payload.srt_path = staged.srt.path;
+  if(staged.bgm) payload.bgm_path = staged.bgm.path;
+
+  const fd=new FormData();
+  fd.append('json_data',JSON.stringify(payload));
+
+  $('runBtn').disabled=true; $('testBtn').disabled=true;
+  $('resultWrap').innerHTML='';
+  showStatus('running','Uploading files…',true);
+  try{
+    const jobId = await uploadWithProgress(fd);
+    await poll(jobId);
+  }catch(e){
+    showStatus('error','<b>Error:</b> '+e.message);
+  } finally { $('runBtn').disabled=false; $('testBtn').disabled=false; }
+}
+
+// Upload with a real progress bar (XHR reports bytes sent), then returns job id.
+function uploadWithProgress(fd){
+  return new Promise((resolve,reject)=>{
+    const xhr=new XMLHttpRequest();
+    xhr.open('POST','/api/render');
+    xhr.upload.onprogress=e=>{
+      if(e.lengthComputable){
+        const pct=Math.round(e.loaded/e.total*100);
+        const st=$('status');
+        st.className='status show running';
+        st.innerHTML='<div class="spinner"></div><span style="flex:1">Uploading files…</span>'
+          +'<div style="width:100%;margin-top:8px"><div style="display:flex;justify-content:space-between;font-size:11px;color:var(--dim);margin-bottom:4px"><span>Upload</span><span>'+pct+'%</span></div>'
+          +'<div style="height:8px;background:var(--panel2);border-radius:6px;overflow:hidden;border:1px solid var(--line)"><div style="height:100%;width:'+pct+'%;background:linear-gradient(90deg,var(--accent),var(--accent2));transition:width .2s;border-radius:6px"></div></div></div>';
+      }
+    };
+    xhr.onload=()=>{
+      try{ const j=JSON.parse(xhr.responseText); if(j.job_id) resolve(j.job_id); else reject(new Error(j.detail||'no job id')); }
+      catch(e){ reject(new Error('bad server response')); }
+    };
+    xhr.onerror=()=>reject(new Error('upload failed'));
+    xhr.send(fd);
+  });
+}
+async function poll(jobId){
+  const st=$('status');
+  for(let i=0;i<600;i++){
+    const r=await fetch('/api/status/'+jobId); const j=await r.json();
+    if(j.status==='done'){
+      showStatus('done','<b>Done.</b> <a href="/api/download/'+j.files[0]+'" target="_blank" style="color:var(--accent)">⬇ Download video</a>');
+      const v=document.createElement('video'); v.src='/api/download/'+j.files[0]; v.controls=true;
+      v.className='result-video'; $('resultWrap').innerHTML=''; $('resultWrap').appendChild(v);
+      notifyDone('✅ Render complete', 'Your video is ready to download.');
+      fetchJobs();
+      return;
+    }
+    if(j.status==='error'){
+      showStatus('error','<b>Error:</b> '+j.message);
+      notifyDone('❌ Render failed', j.message);
+      return;
+    }
+    const pct = Math.round((j.progress||0)*100);
+    st.innerHTML='<div class="spinner"></div><span style="flex:1">'+j.message+'</span>'
+      +'<div style="width:100%;margin-top:8px"><div style="display:flex;justify-content:space-between;font-size:11px;color:var(--dim);margin-bottom:4px"><span>Rendering…</span><span id="pctTxt">'+pct+'%</span></div>'
+      +'<div style="height:8px;background:var(--panel2);border-radius:6px;overflow:hidden;border:1px solid var(--line)"><div style="height:100%;width:'+pct+'%;background:linear-gradient(90deg,var(--accent),var(--accent2));transition:width .5s;border-radius:6px"></div></div></div>';
+    await new Promise(r=>setTimeout(r,2000));
+  }
+  showStatus('error','<b>Timeout:</b> render took too long.');
+}
+
+// ---- Monitor: live log + jobs ----
+let logVisible=false, logTimer=null;
+$('toggleLog').onclick=function(){
+  logVisible=!logVisible;
+  $('logView').style.display=logVisible?'block':'none';
+  this.textContent=logVisible?'📋 Hide log':'📋 Show log';
+  if(logVisible){fetchLog();startLogPoll();}else{stopLogPoll();}
+};
+$('refreshLog').onclick=()=>{fetchLog();fetchJobs();};
+function fetchLog(){
+  fetch('/api/logs').then(r=>r.json()).then(d=>{
+    if(d.log && d.log.length){
+      $('logView').textContent=d.log.join('\n');
+      $('logView').scrollTop=$('logView').scrollHeight;
+      $('logMeta').textContent='· '+d.log.length+' lines';
+    }
+  }).catch(()=>{});
+}
+function fetchJobs(){
+  fetch('/api/jobs').then(r=>r.json()).then(d=>{
+    const el=$('jobList');
+    if(!d.jobs || !d.jobs.length){el.innerHTML='<div style="font-size:12px;color:var(--faint)">No jobs yet.</div>';return;}
+    el.innerHTML=d.jobs.map(j=>{
+      const c=j.created?new Date(j.created*1000).toLocaleTimeString():'';
+      const cls=j.status==='error'?'#ff6b6b':(j.status==='done'?'#2ecc71':'#7c6cff');
+      const files=j.files&&j.files.length?(' · <a href="/api/download/'+j.files[0]+'" style="color:var(--accent)">⬇</a>'):'';
+      return `<div style="font-size:12px;padding:6px 10px;border:1px solid var(--line);border-radius:8px;margin-bottom:6px;display:flex;gap:10px;align-items:center">
+        <b style="color:${cls};min-width:56px">${j.status.toUpperCase()}</b>
+        <span style="color:var(--dim);flex:1">${j.message||''}</span>
+        <span style="color:var(--faint)">${c}</span>${files}
+      </div>`;
+    }).join('');
+  }).catch(()=>{});
+}
+function startLogPoll(){stopLogPoll();logTimer=setInterval(fetchLog,4000);}
+function stopLogPoll(){if(logTimer){clearInterval(logTimer);logTimer=null;}}
+fetchJobs();
+
+// Init per-engine speed sliders from the server's current/default env values.
+function loadSpeeds(){
+  fetch('/api/speeds').then(r=>r.json()).then(d=>{
+    const map={edge:'sEdge',kokoro:'sKokoro',pocket:'sPocket'};
+    for(const k in map){
+      const v=(d[k]&&d[k].current!=null)?+d[k].current:(k==='kokoro'?1.1:1.0);
+      const sl=$(map[k]); sl.value=Math.min(1.5,Math.max(0.5,v));
+      $('v'+map[k].slice(1)).textContent=(+sl.value).toFixed(2);
+    }
+  }).catch(()=>{});
+}
+loadSpeeds();
+
+// ---- Finish notification: browser popup + sound + title flash ----
+function notifyDone(title, body){
+  try{
+    if('Notification' in window){
+      if(Notification.permission==='granted'){ new Notification(title,{body}); }
+      else if(Notification.permission!=='denied'){ Notification.requestPermission().then(p=>{ if(p==='granted') new Notification(title,{body}); }); }
+    }
+  }catch(e){}
+  try{
+    const ctx = new (window.AudioContext||window.webkitAudioContext)();
+    const o=ctx.createOscillator(), g=ctx.createGain();
+    o.connect(g); g.connect(ctx.destination); o.type='sine'; o.frequency.value=880;
+    g.gain.setValueAtTime(0.2,ctx.currentTime);
+    g.gain.exponentialRampToValueAtTime(0.001,ctx.currentTime+0.5);
+    o.start(); o.stop(ctx.currentTime+0.5);
+  }catch(e){}
+  // flash title
+  const orig=document.title; let n=0;
+  const int=setInterval(()=>{ document.title=(n%2===0)?'⚠ '+title+' ⚠':'— Gudmarv Easy dubbing —'; if(++n>=8)clearInterval(int); },700);
+  setTimeout(()=>{document.title=orig;},6000);
+}
+</script>
+</body>
+</html>
