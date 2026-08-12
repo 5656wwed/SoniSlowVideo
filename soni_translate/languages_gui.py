@@ -28,7 +28,7 @@ language_data = {
         "description": """
         ### 🎥 **Translate videos easily with SoniTranslate!** 📽️
 
-        Upload a video, subtitle, audio file or provide a URL video link. 📽️ **Gets the updated notebook from the official repository.: [SoniTranslate](https://github.com/5656wwed/SoniTranslate)!**
+        Upload a video, subtitle, audio file or provide a URL video link. 📽️ **Gets the updated notebook from the official repository.: [Gudmarv Easy dubbing](https://github.com/5656wwed/SoniSlowVideo)!**
 
         See the tab `Help` for instructions on how to use it. Let's start having fun with video translation! 🚀🎉
         """,
@@ -218,7 +218,7 @@ language_data = {
         "description": """
         ### 🎥 **¡Traduce videos fácilmente con SoniTranslate!** 📽️
 
-        Sube un video, audio o proporciona un enlace de YouTube. 📽️ **Obtén el cuaderno actualizado desde el repositorio oficial: [SoniTranslate](https://github.com/5656wwed/SoniTranslate)!**
+        Sube un video, audio o proporciona un enlace de YouTube. 📽️ **Obtén el cuaderno actualizado desde el repositorio oficial: [Gudmarv Easy dubbing](https://github.com/5656wwed/SoniSlowVideo)!**
 
         Consulta la pestaña `Ayuda` para obtener instrucciones sobre cómo usarlo. ¡Comencemos a divertirnos con la traducción de videos! 🚀🎉
         """,
@@ -408,7 +408,7 @@ language_data = {
         "description": """
         ### 🎥 **Traduisez facilement les vidéos avec SoniTranslate !** 📽️
 
-        Téléchargez une vidéo, un fichier audio ou fournissez un lien YouTube. 📽️ **Obtenez le notebook mis à jour à partir du référentiel officiel : [SoniTranslate](https://github.com/5656wwed/SoniTranslate)!**
+        Téléchargez une vidéo, un fichier audio ou fournissez un lien YouTube. 📽️ **Obtenez le notebook mis à jour à partir du référentiel officiel : [Gudmarv Easy dubbing](https://github.com/5656wwed/SoniSlowVideo)!**
 
         Consultez l'onglet `Aide` pour des instructions sur son utilisation. Amusons-nous à traduire des vidéos ! 🚀🎉
         """,
@@ -598,7 +598,7 @@ language_data = {
         "description": """
         ### 🎥 **Übersetzen Sie Videos einfach mit SoniTranslate!** 📽️
 
-        Laden Sie ein Video, eine Audiodatei hoch oder geben Sie einen YouTube-Link an. 📽️ **Holen Sie sich das aktualisierte Notizbuch aus dem offiziellen Repository: [SoniTranslate](https://github.com/5656wwed/SoniTranslate)!**
+        Laden Sie ein Video, eine Audiodatei hoch oder geben Sie einen YouTube-Link an. 📽️ **Holen Sie sich das aktualisierte Notizbuch aus dem offiziellen Repository: [Gudmarv Easy dubbing](https://github.com/5656wwed/SoniSlowVideo)!**
 
         Sehen Sie sich den Tab `Hilfe` für Anweisungen zur Verwendung an. Fangen wir an, Spaß beim Übersetzen von Videos zu haben! 🚀🎉
         """,
@@ -788,7 +788,7 @@ language_data = {
         "description": """
         ### 🎥 **Traduci i video facilmente con SoniTranslate!** 📽️
 
-        Carica un video, un file audio o fornisci un link YouTube. 📽️ **Ottieni il notebook aggiornato dal repository ufficiale: [SoniTranslate](https://github.com/5656wwed/SoniTranslate)!**
+        Carica un video, un file audio o fornisci un link YouTube. 📽️ **Ottieni il notebook aggiornato dal repository ufficiale: [Gudmarv Easy dubbing](https://github.com/5656wwed/SoniSlowVideo)!**
 
         Consulta la scheda `Aiuto` per istruzioni su come utilizzarlo. Iniziamo a divertirci con la traduzione dei video! 🚀🎉
         """,
@@ -978,7 +978,7 @@ language_data = {
         "description": """
         ### 🎥 **SoniTranslateで簡単に動画を翻訳しましょう！** 📽️
 
-        動画、音声ファイルをアップロードするか、YouTubeのリンクを提供してください。📽️ **公式リポジトリから最新のノートブックを入手する: [SoniTranslate](https://github.com/5656wwed/SoniTranslate)!**
+        動画、音声ファイルをアップロードするか、YouTubeのリンクを提供してください。📽️ **公式リポジトリから最新のノートブックを入手する: [Gudmarv Easy dubbing](https://github.com/5656wwed/SoniSlowVideo)!**
 
         使用方法についての指示は`ヘルプ`タブを参照してください。動画翻訳を楽しんでみましょう！ 🚀🎉
         """,
@@ -1168,7 +1168,7 @@ language_data = {
         "description": """
           ### 🎥 **使用SoniTranslate轻松翻译视频！** 📽️
 
-          上传视频、音频文件或提供YouTube链接。 📽️ **从官方存储库获取更新的笔记本：[SoniTranslate](https://github.com/5656wwed/SoniTranslate)!**
+          上传视频、音频文件或提供YouTube链接。 📽️ **从官方存储库获取更新的笔记本：[Gudmarv Easy dubbing](https://github.com/5656wwed/SoniSlowVideo)!**
 
           查看`帮助`标签以获取如何使用的说明。让我们开始享受视频翻译的乐趣吧！ 🚀🎉
           """,
@@ -1358,7 +1358,7 @@ language_data = {
         "description": """
         ### 🎥 **Перекладайте відео легко з SoniTranslate!** 📽️
 
-        Завантажте відео, аудіофайл або надайте посилання на YouTube. 📽️ **Отримайте оновлений ноутбук з офіційного репозиторію: [SoniTranslate](https://github.com/5656wwed/SoniTranslate)!**
+        Завантажте відео, аудіофайл або надайте посилання на YouTube. 📽️ **Отримайте оновлений ноутбук з офіційного репозиторію: [Gudmarv Easy dubbing](https://github.com/5656wwed/SoniSlowVideo)!**
 
         Дивіться вкладку `Довідка` за інструкціями, як цим користуватися. Давайте почнемо веселощі з перекладу відео! 🚀🎉
         """,
@@ -1548,7 +1548,7 @@ language_data = {
         "description": """
           ### 🎥 **ترجمة مقاطع الفيديو بسهولة مع SoniTranslate!** 📽️
 
-          قم بتحميل ملف فيديو أو صوتي أو قدم رابطًا لفيديو YouTube. 📽️ **احصل على الدفتر المحدث من المستودع الرسمي: [SoniTranslate](https://github.com/5656wwed/SoniTranslate)!**
+          قم بتحميل ملف فيديو أو صوتي أو قدم رابطًا لفيديو YouTube. 📽️ **احصل على الدفتر المحدث من المستودع الرسمي: [Gudmarv Easy dubbing](https://github.com/5656wwed/SoniSlowVideo)!**
 
           انظر إلى علامة التبويب "المساعدة" للحصول على تعليمات حول كيفية استخدامه. لنبدأ بالمرح مع ترجمة الفيديو! 🚀🎉
           """,
@@ -1738,7 +1738,7 @@ language_data = {
         "description": """
         ### 🎥 **Перевод видео легко с SoniTranslate!** 📽️
 
-        Загрузите видео, аудиофайл или предоставьте ссылку на YouTube. 📽️ **Получите обновленный блокнот из официального репозитория.: [SoniTranslate](https://github.com/5656wwed/SoniTranslate)!**
+        Загрузите видео, аудиофайл или предоставьте ссылку на YouTube. 📽️ **Получите обновленный блокнот из официального репозитория.: [Gudmarv Easy dubbing](https://github.com/5656wwed/SoniSlowVideo)!**
 
         Посмотрите вкладку `Помощь` для инструкций о том, как это использовать. Давайте начнем веселиться с переводом видео! 🚀🎉
         """,
@@ -1928,7 +1928,7 @@ language_data = {
         "description": """
         ### 🎥 **SoniTranslate ile videoları kolayca çevirin!** 📽️
 
-        Bir video yükleyin, ses dosyası ekleyin veya bir YouTube bağlantısı sağlayın. 📽️ **Güncellenmiş notebook'ı resmi depodan alın: [SoniTranslate](https://github.com/5656wwed/SoniTranslate)!**
+        Bir video yükleyin, ses dosyası ekleyin veya bir YouTube bağlantısı sağlayın. 📽️ **Güncellenmiş notebook'ı resmi depodan alın: [Gudmarv Easy dubbing](https://github.com/5656wwed/SoniSlowVideo)!**
 
         Kullanım talimatları için 'Yardım' sekmesine bakın. Video çevirisi yapmaya başlayalım! 🚀🎉
         """,
@@ -2119,7 +2119,7 @@ language_data = {
         "description": """
         ### 🎥 **Terjemahkan video dengan mudah menggunakan SoniTranslate!** 📽️
 
-        Unggah video, file audio, atau berikan tautan YouTube. 📽️ **Dapatkan buku catatan yang diperbarui dari repositori resmi: [SoniTranslate](https://github.com/5656wwed/SoniTranslate)!**
+        Unggah video, file audio, atau berikan tautan YouTube. 📽️ **Dapatkan buku catatan yang diperbarui dari repositori resmi: [Gudmarv Easy dubbing](https://github.com/5656wwed/SoniSlowVideo)!**
 
         Lihat tab `Bantuan` untuk petunjuk penggunaan. Mari mulai bersenang-senang dengan menerjemahkan video! 🚀🎉
         """,
@@ -2309,7 +2309,7 @@ language_data = {
         "description": """
         ### 🎥 **Traduza vídeos facilmente com o SoniTranslate!** 📽️
 
-        Carregue um vídeo, arquivo de áudio ou forneça um link do YouTube. 📽️ **Obtenha o caderno atualizado do repositório oficial: [SoniTranslate](https://github.com/5656wwed/SoniTranslate)!**
+        Carregue um vídeo, arquivo de áudio ou forneça um link do YouTube. 📽️ **Obtenha o caderno atualizado do repositório oficial: [Gudmarv Easy dubbing](https://github.com/5656wwed/SoniSlowVideo)!**
 
         Consulte a guia `Ajuda` para instruções sobre como usá-lo. Vamos começar a nos divertir com a tradução de vídeos! 🚀🎉
         """,
@@ -2499,7 +2499,7 @@ language_data = {
         "description": """
           ### 🎥 **SoniTranslate के साथ वीडियो को आसानी से अनुवादित करें!** 📽️
 
-          एक वीडियो, ऑडियो फ़ाइल अपलोड करें या एक YouTube लिंक प्रदान करें। 📽️ **आधिकारिक भंडार से अपडेटेड नोटबुक प्राप्त करें: [SoniTranslate](https://github.com/5656wwed/SoniTranslate)!**
+          एक वीडियो, ऑडियो फ़ाइल अपलोड करें या एक YouTube लिंक प्रदान करें। 📽️ **आधिकारिक भंडार से अपडेटेड नोटबुक प्राप्त करें: [Gudmarv Easy dubbing](https://github.com/5656wwed/SoniSlowVideo)!**
 
           उसे 'मदद' टैब देखें इसका उपयोग कैसे करना है के निर्देशों के लिए। वीडियो अनुवाद के साथ मज़े करना शुरू करें! 🚀🎉
           """,
@@ -2689,7 +2689,7 @@ language_data = {
         "description": """
         ### 🎥 **Dịch video dễ dàng với SoniTranslate!** 📽️
 
-        Tải lên một video, tập tin âm thanh hoặc cung cấp một liên kết YouTube. 📽️ **Nhận sổ tay cập nhật từ kho chính thức: [SoniTranslate](https://github.com/5656wwed/SoniTranslate)!**
+        Tải lên một video, tập tin âm thanh hoặc cung cấp một liên kết YouTube. 📽️ **Nhận sổ tay cập nhật từ kho chính thức: [Gudmarv Easy dubbing](https://github.com/5656wwed/SoniSlowVideo)!**
 
         Xem tab `Trợ giúp` để biết hướng dẫn cách sử dụng. Hãy bắt đầu vui vẻ với việc dịch video! 🚀🎉
         """,
@@ -2879,7 +2879,7 @@ language_data = {
         "description": """
         ### 🎥 **Łatwe tłumaczenie filmów dzięki SoniTranslate!** 📽️
 
-        Prześlij film, plik dźwiękowy lub podaj link do YouTube. 📽️ **Pobierz aktualny notatnik ze strony oficjalnego repozytorium: [SoniTranslate](https://github.com/5656wwed/SoniTranslate)!**
+        Prześlij film, plik dźwiękowy lub podaj link do YouTube. 📽️ **Pobierz aktualny notatnik ze strony oficjalnego repozytorium: [Gudmarv Easy dubbing](https://github.com/5656wwed/SoniSlowVideo)!**
 
         Zobacz zakładkę `Pomoc` w celu uzyskania instrukcji dotyczących korzystania z aplikacji. Zaczynajmy zabawę z tłumaczeniem filmów! 🚀🎉
         """,
@@ -3069,7 +3069,7 @@ language_data = {
         "description": """
         ### 🎥 **Översätt videor enkelt med SoniTranslate!** 📽️
 
-        Ladda upp en video, ljudfil eller ange en YouTube-länk. 📽️ **Få den uppdaterade anteckningsboken från det officiella arkivet: [SoniTranslate](https://github.com/5656wwed/SoniTranslate)!**
+        Ladda upp en video, ljudfil eller ange en YouTube-länk. 📽️ **Få den uppdaterade anteckningsboken från det officiella arkivet: [Gudmarv Easy dubbing](https://github.com/5656wwed/SoniSlowVideo)!**
 
         Se fliken `Hjälp` för instruktioner om hur du använder det. Nu ska vi ha roligt med videöversättning! 🚀🎉
         """,
@@ -3259,7 +3259,7 @@ language_data = {
         "description": """
         ### 🎥 **SoniTranslate를 사용하여 비디오를 쉽게 번역하세요!** 📽️
 
-        비디오, 오디오 파일을 업로드하거나 YouTube 링크를 제공하세요. 📽️ **공식 저장소에서 최신 노트북을 받으세요.: [SoniTranslate](https://github.com/5656wwed/SoniTranslate)!**
+        비디오, 오디오 파일을 업로드하거나 YouTube 링크를 제공하세요. 📽️ **공식 저장소에서 최신 노트북을 받으세요.: [Gudmarv Easy dubbing](https://github.com/5656wwed/SoniSlowVideo)!**
 
         사용 방법에 대한 지침은 `도움말` 탭을 참조하세요. 비디오 번역으로 즐거운 시간을 보내세요! 🚀🎉
         """,
@@ -3449,7 +3449,7 @@ language_data = {
         "description": """
         ### 🎥 **आसानीसोबत SoniTranslate द्वारे व्हिडिओ अनुवाद करा!** 📽️
 
-        एक व्हिडिओ, ऑडिओ फाईल अपलोड करा किंवा एक YouTube लिंक प्रदान करा. 📽️ **अद्यतनित नोटबुक घ्या आधिकृत भंडारात।: [SoniTranslate](https://github.com/5656wwed/SoniTranslate)!**
+        एक व्हिडिओ, ऑडिओ फाईल अपलोड करा किंवा एक YouTube लिंक प्रदान करा. 📽️ **अद्यतनित नोटबुक घ्या आधिकृत भंडारात।: [Gudmarv Easy dubbing](https://github.com/5656wwed/SoniSlowVideo)!**
 
         तपशील देखण्यासाठी 'मदत' टॅब पहा. व्हिडिओ अनुवादासोबत मजा करण्याची सुरवात करूया! 🚀🎉
         """,
@@ -3637,7 +3637,7 @@ language_data = {
         "description": """
         ### 🎥 **SoniTranslate ilə videoları asanlıqla tərcümə edin!** 📽️
 
-        Video, səs faylı yükləyin və ya YouTube bağlantısı təqdim edin. 📽️ **SoniTranslate-in rəsmi repositoriyasından yenilənmiş qeydləri alın: [SoniTranslate](https://github.com/5656wwed/SoniTranslate)!**
+        Video, səs faylı yükləyin və ya YouTube bağlantısı təqdim edin. 📽️ **SoniTranslate-in rəsmi repositoriyasından yenilənmiş qeydləri alın: [Gudmarv Easy dubbing](https://github.com/5656wwed/SoniSlowVideo)!**
 
         İstifadəsi üçün təlimatlar üçün `Kömək` sekmesinə baxın. Video tərcüməsi ilə əyləncəyə başlayaq! 🚀🎉
         """,
@@ -3828,7 +3828,7 @@ language_data = {
         "description": """
         ### 🎥 **با SoniTranslate به راحتی ویدئوها را ترجمه کنید!** 📽️
 
-        یک ویدئو، فایل زیرنویس، فایل صوتی را آپلود کنید یا یک لینک ویدئوی URL ارائه دهید. 📽️ **دفترچه یادداشت به‌روز شده را از مخزن رسمی دریافت کنید: [SoniTranslate](https://github.com/5656wwed/SoniTranslate)!**
+        یک ویدئو، فایل زیرنویس، فایل صوتی را آپلود کنید یا یک لینک ویدئوی URL ارائه دهید. 📽️ **دفترچه یادداشت به‌روز شده را از مخزن رسمی دریافت کنید: [Gudmarv Easy dubbing](https://github.com/5656wwed/SoniSlowVideo)!**
 
         دستورالعمل‌های استفاده را در تب `Help` ببینید. بیایید با ترجمه ویدئوها سرگرم شویم! 🚀🎉
         """,
@@ -4019,7 +4019,7 @@ language_data = {
         "description": """
         ### 🎥 **Vertaal video's maklik met SoniTranslate!** 📽️
 
-        Laai 'n video, onderskrif, klanklêer op of verskaf 'n URL-videolink. 📽️ **Kry die opgedateerde notaboek van die amptelike repository: [SoniTranslate](https://github.com/5656wwed/SoniTranslate)!**
+        Laai 'n video, onderskrif, klanklêer op of verskaf 'n URL-videolink. 📽️ **Kry die opgedateerde notaboek van die amptelike repository: [Gudmarv Easy dubbing](https://github.com/5656wwed/SoniSlowVideo)!**
 
         Sien die tab 'Hulp' vir instruksies oor hoe om dit te gebruik. Kom ons begin pret hê met videovertaal! 🚀🎉
         """,
