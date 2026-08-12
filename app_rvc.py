@@ -770,15 +770,29 @@ class SoniTranslate(SoniTrCache):
                         _ch = min(int(edit_crop_h), _chin - _cy)
                         if _cw > 0 and _ch > 0:
                             _vf.append(f"crop={_cw}:{_ch}:{_cx}:{_cy}")
-                    if (edit_bright or edit_contrast != 1.0
-                            or edit_sat != 1.0 or edit_gamma != 1.0):
-                        _vf.append(
-                            f"eq=brightness={edit_bright:.3f}:"
-                            f"contrast={edit_contrast:.3f}:"
+                    # Brightness arrives from the UI as a CSS-style multiplier
+                    # offset (0 = normal, +/-0.4 = +/-40%). ffmpeg's `eq`
+                    # brightness is ADDITIVE (-1..1), so 0.4 would blow the
+                    # image out (washed-out "not real" colors). Apply
+                    # brightness as a luma multiply to match the live CSS
+                    # preview, and keep eq for contrast/sat/gamma which already
+                    # share CSS's 1=normal scale.
+                    _eq = []
+                    _mb = 1.0 + float(edit_bright or 0.0)
+                    if abs(_mb - 1.0) > 1e-3:
+                        _eq.append(
+                            f"lutyuv=y='clip(val*{_mb:.4f},0,255)'"
+                        )
+                    if (edit_contrast != 1.0 or edit_sat != 1.0
+                            or edit_gamma != 1.0):
+                        _eq.append(
+                            f"eq=contrast={edit_contrast:.3f}:"
                             f"saturation={edit_sat:.3f}:gamma={edit_gamma:.3f}"
                         )
                     if edit_hue:
-                        _vf.append(f"hue=h={edit_hue:.1f}")
+                        _eq.append(f"hue=h={edit_hue:.1f}")
+                    if _eq:
+                        _vf.extend(_eq)
                     _lutp = None
                     if lut_preset:
                         _lutp = os.path.join("assets", "lut", lut_preset)
