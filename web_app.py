@@ -385,6 +385,16 @@ def download(filename: str):
     return FileResponse(str(p), filename=filename)
 
 
+@app.get("/api/luts")
+def list_luts():
+    """List every saved .cube LUT in assets/lut/ (the persistent library).
+    Anything uploaded via /api/upload kind=lut lands here and is reusable."""
+    lut_dir = Path(REPO) / "assets" / "lut"
+    if not lut_dir.is_dir():
+        return {"luts": []}
+    return {"luts": sorted(f.name for f in lut_dir.glob("*.cube"))}
+
+
 @app.post("/api/lut_preview")
 def lut_preview(data: dict):
     """Render a live preview frame with the chosen LUT + color adjustments.
