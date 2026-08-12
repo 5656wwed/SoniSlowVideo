@@ -805,13 +805,31 @@ class SoniTranslate(SoniTrCache):
                     except Exception:
                         _dur = 0.0
                     _n = max(1, int(_dur // _seg) + (1 if _dur % _seg > 0 else 0)) if _dur > 0 else 1
+                    # Probe source FPS so we can normalize each segment's frame
+                    # rate. Cutting a CFR/B-frame stream on non-keyframe
+                    # boundaries produces a brief glitch right before the mirror
+                    # (a torn/frozen ~1 frame). Normalizing with `fps=` gives the
+                    # concat clean, continuous timestamps -> no boundary glitch.
+                    _fps = 30.0
+                    try:
+                        _fps = float(_sp.check_output(
+                            ["ffprobe", "-v", "error", "-select_streams", "v:0",
+                             "-show_entries", "stream=r_frame_rate",
+                             "-of", "csv=p=0", base_video_file],
+                            text=True).strip().split("/")[0])
+                        if _fps <= 0 or _fps > 120:
+                            _fps = 30.0
+                    except Exception:
+                        _fps = 30.0
+                    _fps = round(_fps, 3)
                     _fc = []
                     for _i in range(_n):
                         _s = _i * _seg
                         _e = min((_i + 1) * _seg, _dur) if _dur > 0 else (_i + 1) * _seg
                         _fl = ",hflip" if (_i % 2 == 1) else ""
                         _fc.append(
-                            f"[0:v]trim=start={_s}:end={_e},setpts=PTS-STARTPTS{_fl}[v{_i}]"
+                            f"[0:v]trim=start={_s}:end={_e},setpts=PTS-STARTPTS,"
+                            f"fps={_fps}{_fl}[v{_i}]"
                         )
                         _fc.append(
                             f"[0:a]atrim=start={_s}:end={_e},asetpts=PTS-STARTPTS[a{_i}]"
