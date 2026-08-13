@@ -444,6 +444,31 @@ def logs(limit: int = 120):
     """Live tail of the render log for monitoring."""
     return {"log": _tail_log(limit)}
 
+@app.get("/api/gpu")
+def gpu():
+    """Live GPU + NVENC status so the UI badge shows REAL usage, not a hardcoded 'CPU'."""
+    info = {"gpu": False, "pct": None, "mem": None, "nvenc": False}
+    try:
+        out = subprocess.run(
+            ["nvidia-smi", "--query-gpu=utilization.gpu,memory.used,memory.total",
+             "--format=csv,noheader,nounits"],
+            capture_output=True, text=True, timeout=10)
+        if out.returncode == 0 and out.stdout.strip():
+            parts = [p.strip() for p in out.stdout.strip().split(",")]
+            if len(parts) >= 3:
+                info["gpu"] = True
+                info["pct"] = int(float(parts[0]))
+                info["mem"] = f"{parts[1]}/{parts[2]}GB"
+    except Exception:
+        pass
+    try:
+        e = subprocess.run(["ffmpeg", "-hide_banner", "-encoders"],
+                           capture_output=True, text=True, timeout=30).stdout
+        info["nvenc"] = "h264_nvenc" in e
+    except Exception:
+        pass
+    return info
+
 @app.get("/api/download/{filename}")
 def download(filename: str):
     # serve from outputs dir (safe: only allow files under OUTPUTS)

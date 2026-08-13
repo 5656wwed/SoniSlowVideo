@@ -76,7 +76,7 @@
 <body>
 <header><div class="wrap bar">
   <div class="brand"><span class="mark">🎬</span> Gudmarv Easy dubbing <span class="pill">Editor</span></div>
-  <span class="badge">self-hosted · CPU</span>
+  <span class="badge" id="gpuBadge">…</span>
 </div></header>
 
 <div class="wrap">
@@ -781,6 +781,19 @@ function fetchJobs(){
     }).join('');
   }).catch(()=>{});
 }
+function fetchGpu(){
+  fetch('/api/gpu').then(r=>r.json()).then(d=>{
+    const el=$('gpuBadge'); if(!el)return;
+    if(d.gpu){
+      el.textContent='GPU '+d.pct+'%'+(d.nvenc?' · NVENC':'')+(d.mem?' · '+d.mem:'');
+      el.style.color = d.pct>0 ? '#2ecc71' : 'var(--faint)';
+    } else {
+      el.textContent='CPU'+(d.nvenc?' · NVENC':'');
+      el.style.color='var(--faint)';
+    }
+  }).catch(()=>{});
+}
+fetchGpu(); setInterval(fetchGpu, 3000);
 function startLogPoll(){stopLogPoll();logTimer=setInterval(fetchLog,4000);}
 function stopLogPoll(){if(logTimer){clearInterval(logTimer);logTimer=null;}}
 fetchJobs();
