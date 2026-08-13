@@ -575,7 +575,7 @@ def health():
 # ---------------------------------------------------------------------------
 # Pocket TTS voice cloning (saves a .safetensors clone for reuse)
 # ---------------------------------------------------------------------------
-POCKET_VOICES_DIR = Path("/home/ubuntu/pocket_tts_voices")
+POCKET_VOICES_DIR = Path(os.environ.get("POCKET_CLONE_DIR", "/home/ubuntu/pocket_tts_voices"))
 POCKET_CLI = os.environ.get("POCKET_TTS_CLI", "/home/ubuntu/.local/bin/pocket-tts")
 
 @app.get("/api/pocket/clones")
