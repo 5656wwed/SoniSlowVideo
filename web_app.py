@@ -432,6 +432,10 @@ def _tail_log(lines=120):
         # collapse \r progress bars, keep clean lines
         if "%|" in ln or "MB/s" in ln or "it/s]" in ln:
             continue
+        # drop uvicorn HTTP access-log noise ("GET /api/status ... HTTP/1.1" 200 OK)
+        # so the log only shows real render/engine output the user can understand.
+        if ' HTTP/1.1"' in ln or ('INFO: ' in ln and '- "' in ln and '" 200' in ln):
+            continue
         out.append(ln.rstrip())
     return out[-lines:]
 
