@@ -3,6 +3,7 @@ from caption_ass import make_caption_ass
 import re as _re
 import subprocess as _subprocess
 import os as _os
+import shlex
 
 # ---- NVENC: use the T4 GPU's hardware H.264 encoder when available, else CPU.
 # Detected once at first use. NEVER breaks: falls back to libx264 if NVENC
@@ -1649,9 +1650,29 @@ class SoniTranslate(SoniTrCache):
                         )
                     else:
                         command = f"ffmpeg -i {base_video_file} -y -vf subtitles=sub_tra.srt -max_muxing_queue_size 9999 {vid_subs}"
-                    run_command(command)
-                    base_video_file = vid_subs
-                    self.burn_subs_id = hashvideo_text
+                    # Burn via NVENC (falls back to CPU) + force 8-bit yuv420p so
+                    # the output is a clean, always-playable caption-baked file.
+                    _burn_cmd = shlex.split(command)
+                    _br = _ffmpeg_run(_burn_cmd)
+                    if _br.returncode != 0:
+                        logger.error(f"Caption burn FAILED: {_br.stderr[-300:]}")
+                    elif os.path.exists(vid_subs) and os.path.getsize(vid_subs) > 0:
+                        _sz = os.path.getsize(vid_subs)
+                        logger.info(f"Captions burned -> {vid_subs} ({_sz} bytes)")
+                        # verify the caption-baked file actually has video frames
+                        try:
+                            _vn = _sp.check_output(
+                                ["ffprobe", "-v", "error", "-select_streams", "v:0",
+                                 "-show_entries", "stream=nb_frames", "-of",
+                                 "default=noprint_wrappers=1:nokey=1", vid_subs],
+                                text=True).strip() or "?"
+                            logger.info(f"Caption-burned video frames: {_vn}")
+                        except Exception:
+                            pass
+                        base_video_file = vid_subs
+                        self.burn_subs_id = hashvideo_text
+                    else:
+                        logger.error("Caption burn produced empty file - keeping cropped video")
                 except Exception as error:
                     logger.error(str(error))
             else:
