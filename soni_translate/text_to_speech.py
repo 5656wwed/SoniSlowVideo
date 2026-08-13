@@ -1014,7 +1014,10 @@ def segments_kokoro_tts(filtered_kokoro_segments, TRANSLATE_AUDIO_TO):
                 gc.collect()
                 torch.cuda.empty_cache()
             logger.info(f"Loading Kokoro pipeline for lang={lang_code}")
-            pipeline = KPipeline(lang_code=lang_code)
+            # KPipeline defaults to CPU — pass the device explicitly so Kokoro
+            # actually uses the GPU when available (SONITR_DEVICE="cuda").
+            _kdev = "cuda" if torch.cuda.is_available() else "cpu"
+            pipeline = KPipeline(lang_code=lang_code, device=_kdev)
 
         filename = f"audio/{start}.ogg"
         text = _re.sub(r"\s+", " ", text).strip()
