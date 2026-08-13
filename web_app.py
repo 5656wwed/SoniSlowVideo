@@ -213,7 +213,7 @@ def _copy_to_drive(files):
     Drive mount (Colab) lives at /content/drive; on the VPS this path won't
     exist, so it silently no-ops."""
     try:
-        drive_dir = Path("/content/drive/MyDrive/SoniSlowVideo_outputs")
+        drive_dir = Path("/content/drive/MyDrive/GudmarvEasyDubbing_Outputs")
         if not drive_dir.exists():
             return
         drive_dir.mkdir(parents=True, exist_ok=True)
