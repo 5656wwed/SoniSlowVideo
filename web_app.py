@@ -21,6 +21,10 @@ OUTPUTS.mkdir(exist_ok=True)
 
 os.environ.setdefault("SAVE_DIR", str(OUTPUTS))
 
+# Log file used for progress + live tail. Defaults to the VPS path (works there);
+# Colab overrides it via SONI_LOG_FILE (the notebook redirects stdout to /content/server.log).
+LOG_FILE = os.environ.get("SONI_LOG_FILE", "/home/ubuntu/sonislow/web_app.log")
+
 # --- FastAPI + engine imports (gradio is imported by app_rvc but unused here) ---
 from fastapi import FastAPI, UploadFile, File, Form, HTTPException
 from fastapi.responses import FileResponse, HTMLResponse, JSONResponse
@@ -311,7 +315,7 @@ async def render(
     _next_job += 1
     # record the log byte offset at submission so progress parsing only reads THIS job's lines
     try:
-        with open("/home/ubuntu/sonislow/web_app.log", "rb") as f:
+        with open(LOG_FILE, "rb") as f:
             _log_start = f.seek(0, os.SEEK_END)
     except Exception:
         _log_start = 0
@@ -332,7 +336,7 @@ def _estimate_progress(job_id):
         return base
     # running / queued
     try:
-        with open("/home/ubuntu/sonislow/web_app.log", "rb") as f:
+        with open(LOG_FILE, "rb") as f:
             f.seek(int(j.get("_log_start", 0)))
             lines = f.read().decode("utf-8", "replace").splitlines()
     except Exception:
@@ -394,7 +398,7 @@ _LOG_TAIL = []
 def _tail_log(lines=120):
     """Return last `lines` lines of the app log file, cleaned of progress spinners."""
     try:
-        with open("/home/ubuntu/sonislow/web_app.log", "r", errors="replace") as f:
+        with open(LOG_FILE, "r", errors="replace") as f:
             raw = f.readlines()
     except Exception:
         return []
