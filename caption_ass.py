@@ -83,8 +83,14 @@ def _style_line(name, size, color, box, pos, play_h, font="Arial Black",
 def make_caption_ass(srt_path, ass_path, font_size_px=0, text_color="#FFFFFF",
                      hl_color="#FFD400", box=True, pos="lower", karaoke=True,
                      font="Arial Black", glow=False, glow_color="#FFD400",
-                     glow_strength=6, play_w=1280, play_h=720):
+                     glow_strength=6, play_w=1280, play_h=720, style="highlight"):
     cues = _parse_srt(srt_path)
+    _s = (style or "highlight").lower()
+    # Map the UI's 4 caption styles to render behavior.
+    do_karaoke = _s in ("highlight", "pop")   # word-by-word highlight/pop
+    force_box = (_s == "box")                  # opaque box behind the line
+    pop_scale = (_s == "pop")                  # current word scales up briefly
+    _box = bool(box) or force_box
     L = []
     L.append("[Script Info]")
     L.append("ScriptType: v4.00+")
@@ -100,17 +106,17 @@ def make_caption_ass(srt_path, ass_path, font_size_px=0, text_color="#FFFFFF",
              "Alignment, MarginL, MarginR, MarginV, Encoding")
     if glow:
         # thin outline on the crisp text so the halo shows through
-        L.append(_style_line("Cap", font_size_px, text_color, False, pos, play_h,
+        L.append(_style_line("Cap", font_size_px, text_color, _box, pos, play_h,
                              font, outline_px=1, shadow_px=1))
-        L.append(_style_line("CapHl", font_size_px, hl_color, False, pos, play_h,
+        L.append(_style_line("CapHl", font_size_px, hl_color, _box, pos, play_h,
                              font, outline_px=1, shadow_px=1))
         # glow underlayer is BIGGER + blurred so it peeks out around the text
         _gsize = int((font_size_px if font_size_px > 0 else int(play_h * 0.06)) * 1.25)
-        L.append(_style_line("CapGlow", _gsize, glow_color, False, pos, play_h,
+        L.append(_style_line("CapGlow", _gsize, glow_color, _box, pos, play_h,
                              font, outline_px=0, shadow_px=0))
     else:
-        L.append(_style_line("Cap", font_size_px, text_color, box, pos, play_h, font))
-        L.append(_style_line("CapHl", font_size_px, hl_color, box, pos, play_h, font))
+        L.append(_style_line("Cap", font_size_px, text_color, _box, pos, play_h, font))
+        L.append(_style_line("CapHl", font_size_px, hl_color, _box, pos, play_h, font))
     L.append("")
     L.append("[Events]")
     L.append("Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, "
@@ -138,15 +144,16 @@ def make_caption_ass(srt_path, ass_path, font_size_px=0, text_color="#FFFFFF",
             L.append(f"Dialogue: 1,{_ts(start)},{_ts(end)},Cap,,0,0,0,,{line}")
         else:
             L.append(f"Dialogue: 0,{_ts(start)},{_ts(end)},Cap,,0,0,0,,{line}")
-        if karaoke and len(words) > 1:
+        if karaoke and do_karaoke and len(words) > 1:
             step = (end - start) / len(words)
             hl_layer = 2 if glow else 1
             for i, w in enumerate(words):
                 ws = start + i * step
                 we = start + (i + 1) * step
+                _fx = "{\\fscx120\\fscy120}" if pop_scale else ""
                 # only the currently-spoken word is highlighted (overlay on top)
                 L.append(f"Dialogue: {hl_layer},{_ts(ws)},{_ts(we)},CapHl,,0,0,0,,"
-                         f"{_esc(w)}")
+                         f"{_fx}{_esc(w)}")
     with open(ass_path, "w", encoding="utf-8") as f:
         f.write("\n".join(L) + "\n")
     return ass_path

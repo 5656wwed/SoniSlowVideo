@@ -1654,6 +1654,7 @@ class SoniTranslate(SoniTrCache):
                             glow_color=caption_glow_color or "#FFD400",
                             glow_strength=int(caption_glow_strength or 6),
                             play_w=_pw, play_h=_ph,
+                            style=caption_style or "highlight",
                         )
                         command = (
                             f"ffmpeg -i {base_video_file} -y -vf "
