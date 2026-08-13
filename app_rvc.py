@@ -1889,7 +1889,7 @@ class SoniTranslate(SoniTrCache):
             video_output_name,
             "mkv" if "mkv" in output_type else "mp4",
             file_obj=video_output_file,
-            soft_subtitles=soft_subtitles_to_video,
+            soft_subtitles=(soft_subtitles_to_video and not burn_subtitles_to_video),
             subtitle_files=output_format_subtitle,
         )
         msg_out = output[0] if isinstance(output, list) else output
