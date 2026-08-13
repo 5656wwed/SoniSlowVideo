@@ -420,10 +420,13 @@ def jobs(limit: int = 10):
 
 _LOG_TAIL = []
 
-def _tail_log(lines=120):
-    """Return last `lines` lines of the app log file, cleaned of progress spinners."""
+def _tail_log(lines=120, start=0):
+    """Return log lines from byte offset `start` (0 = last `lines` only),
+    cleaned of progress spinners + uvicorn HTTP polling noise."""
     try:
         with open(LOG_FILE, "r", errors="replace") as f:
+            if start:
+                f.seek(start)
             raw = f.readlines()
     except Exception:
         return []
@@ -440,9 +443,17 @@ def _tail_log(lines=120):
     return out[-lines:]
 
 @app.get("/api/logs")
-def logs(limit: int = 120):
-    """Live tail of the render log for monitoring."""
-    return {"log": _tail_log(limit)}
+def logs(limit: int = 200):
+    """Live tail of the render log. Scoped to the MOST RECENT job so the UI shows
+    the current render's progress from its start (not stale history)."""
+    start = 0
+    if JOBS:
+        try:
+            latest = max(JOBS.values(), key=lambda j: j.get("_created", 0))
+            start = int(latest.get("_log_start", 0) or 0)
+        except Exception:
+            start = 0
+    return {"log": _tail_log(limit, start=start)}
 
 @app.get("/api/gpu")
 def gpu():

@@ -753,7 +753,7 @@ $('toggleLog').onclick=function(){
   logVisible=!logVisible;
   $('logView').style.display=logVisible?'block':'none';
   this.textContent=logVisible?'📋 Hide log':'📋 Show log';
-  if(logVisible){fetchLog();startLogPoll();}else{stopLogPoll();}
+  if(logVisible){fetchLog();} startLogPoll(); // keep log fresh even when panel hidden
 };
 $('refreshLog').onclick=()=>{fetchLog();fetchJobs();};
 function fetchLog(){
@@ -796,6 +796,7 @@ function fetchGpu(){
 fetchGpu(); setInterval(fetchGpu, 3000);
 function startLogPoll(){stopLogPoll();logTimer=setInterval(fetchLog,4000);}
 function stopLogPoll(){if(logTimer){clearInterval(logTimer);logTimer=null;}}
+fetchLog(); startLogPoll(); // always keep the current render's log fresh
 fetchJobs();
 
 // Init per-engine speed sliders from the server's current/default env values.
