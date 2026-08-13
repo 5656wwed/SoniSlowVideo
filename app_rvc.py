@@ -23,8 +23,10 @@ def _venc_args(preset="medium", crf=20):
         pmap = {"ultrafast": "p1", "superfast": "p2", "veryfast": "p3",
                 "faster": "p4", "fast": "p4", "medium": "p5",
                 "slow": "p6", "slower": "p6", "veryslow": "p7"}
+        # -pix_fmt yuv420p: NVENC can't take 10-bit HEVC input ("Invalid argument").
+        # Force 8-bit 4:2:0 so the GPU encoder works on HEVC/HDR sources.
         return ["-c:v", "h264_nvenc", "-preset", pmap.get(preset, "p5"),
-                "-cq", str(int(crf))]
+                "-pix_fmt", "yuv420p", "-cq", str(int(crf))]
     return ["-c:v", "libx264", "-preset", preset, "-crf", str(int(crf))]
 
 
@@ -43,10 +45,16 @@ def _ffmpeg_run(cmd):
         n = len(cmd)
         while i < n:
             tok = cmd[i]
-            # match "-c:v","h264_nvenc","-preset",P,"-cq",N  (6 tokens)
+            # match "-c:v","h264_nvenc","-preset",P,"-pix_fmt","yuv420p","-cq",N
             if tok == "-c:v" and i + 1 < n and cmd[i + 1] == "h264_nvenc":
                 repl += ["-c:v", "libx264", "-preset", "medium", "-crf", "20"]
-                i += 6
+                i += 2  # consumed -c:v h264_nvenc
+                if i + 1 < n and cmd[i] == "-preset":
+                    i += 2
+                if i + 1 < n and cmd[i] == "-pix_fmt":
+                    i += 2
+                if i + 1 < n and cmd[i] == "-cq":
+                    i += 2
                 continue
             repl.append(tok)
             i += 1
