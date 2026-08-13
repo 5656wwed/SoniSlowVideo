@@ -28,6 +28,31 @@ def _venc_args(preset="medium", crf=20):
     return ["-c:v", "libx264", "-preset", preset, "-crf", str(int(crf))]
 
 
+def _ffmpeg_run(cmd):
+    """Run an ffmpeg command. If it fails AND it used NVENC, retry the same
+    command with libx264 (CPU) so a GPU-encode hiccup (odd dimensions, unsupported
+    pixel format, etc.) never silently breaks a feature like cut/mirror."""
+    r = _subprocess.run(cmd, capture_output=True, text=True)
+    if r.returncode != 0 and _NVENC_OK and "h264_nvenc" in cmd:
+        repl = []
+        i = 0
+        n = len(cmd)
+        while i < n:
+            tok = cmd[i]
+            # match "-c:v","h264_nvenc","-preset",P,"-cq",N  (6 tokens)
+            if tok == "-c:v" and i + 1 < n and cmd[i + 1] == "h264_nvenc":
+                repl += ["-c:v", "libx264", "-preset", "medium", "-crf", "20"]
+                i += 6
+                continue
+            repl.append(tok)
+            i += 1
+        r2 = _subprocess.run(repl, capture_output=True, text=True)
+        if r2.returncode == 0:
+            return r2
+        return r  # keep the original error for logging
+    return r
+
+
 def _retime_captions_to_audio(srt_path, audio_dir="audio"):
     """Re-time caption cues so each shows exactly when the narration speaks it.
 
@@ -863,6 +888,17 @@ class SoniTranslate(SoniTrCache):
                         _fps = 30.0
                     _fps = round(_fps, 3)
                     _fc = []
+                    # Does the source even have an audio stream? If not, drop the
+                    # audio concat so ffmpeg doesn't fail on missing [0:a].
+                    _has_audio = False
+                    try:
+                        _ap = _sp.check_output(
+                            ["ffprobe", "-v", "error", "-select_streams", "a",
+                             "-show_entries", "stream=index", "-of", "csv=p=0",
+                             base_video_file], text=True).strip()
+                        _has_audio = bool(_ap)
+                    except Exception:
+                        _has_audio = False
                     for _i in range(_n):
                         _s = _i * _seg
                         _e = min((_i + 1) * _seg, _dur) if _dur > 0 else (_i + 1) * _seg
@@ -871,21 +907,27 @@ class SoniTranslate(SoniTrCache):
                             f"[0:v]trim=start={_s}:end={_e},setpts=PTS-STARTPTS,"
                             f"fps={_fps}{_fl}[v{_i}]"
                         )
-                        _fc.append(
-                            f"[0:a]atrim=start={_s}:end={_e},asetpts=PTS-STARTPTS[a{_i}]"
-                        )
-                    _ci = "".join(f"[v{_i}][a{_i}]" for _i in range(_n))
-                    _fc.append(f"{_ci}concat=n={_n}:v=1:a=1[ov][oa]")
+                        if _has_audio:
+                            _fc.append(
+                                f"[0:a]atrim=start={_s}:end={_e},asetpts=PTS-STARTPTS[a{_i}]"
+                            )
+                    if _has_audio:
+                        _ci = "".join(f"[v{_i}][a{_i}]" for _i in range(_n))
+                        _fc.append(f"{_ci}concat=n={_n}:v=1:a=1[ov][oa]")
+                        _map = ["-map", "[ov]", "-map", "[oa]", "-c:a", "aac", "-b:a", "192k"]
+                    else:
+                        _ci = "".join(f"[v{_i}]" for _i in range(_n))
+                        _fc.append(f"{_ci}concat=n={_n}:v=1:a=0[ov]")
+                        _map = ["-map", "[ov]"]
                     _cm_out = base_video_file + ".cm.mp4"
                     _cmd = [
                         "ffmpeg", "-y", "-i", base_video_file,
                         "-filter_complex", ";".join(_fc),
-                        "-map", "[ov]", "-map", "[oa]",
+                        *_map,
                         *_venc_args("medium", 20),
-                        "-c:a", "aac", "-b:a", "192k",
                         "-movflags", "+faststart", _cm_out,
                     ]
-                    _rc = _sp.run(_cmd, capture_output=True, text=True)
+                    _rc = _ffmpeg_run(_cmd)
                     if _rc.returncode == 0:
                         os.replace(_cm_out, base_video_file)
                         logger.info(f"Cut & mirror every {_seg}s applied.")
@@ -973,7 +1015,7 @@ class SoniTranslate(SoniTrCache):
                             "-c:a", "aac", "-b:a", "192k",
                             "-movflags", "+faststart", _tmp,
                         ]
-                        _rc = _sp.run(_cmd, capture_output=True, text=True)
+                        _rc = _ffmpeg_run(_cmd)
                         if _rc.returncode == 0:
                             os.replace(_tmp, base_video_file)
                             logger.info("Pre-dub crop/filter applied to video.")
@@ -1796,7 +1838,7 @@ class SoniTranslate(SoniTrCache):
                     "-c:v", "copy", "-c:a", "aac", "-b:a", "192k",
                     "-movflags", "+faststart", _bm_out,
                 ]
-                _rc = _sp.run(_cmd, capture_output=True, text=True)
+                _rc = _ffmpeg_run(_cmd)
                 if _rc.returncode == 0:
                     os.replace(_bm_out, video_output_file)
                     logger.info("BGM mixed under dubbing.")
@@ -2473,7 +2515,7 @@ def create_gui(theme, logs_in_gui=False):
                             *_venc_args("medium", 20),
                             "-c:a", "aac", "-b:a", "192k",
                             "-movflags", "+faststart", _cm_out]
-                    _rc = _sp.run(_cmd, capture_output=True, text=True)
+                    _rc = _ffmpeg_run(_cmd)
                     if _rc.returncode == 0:
                         os.replace(_cm_out, base)
                     else:
@@ -2523,7 +2565,7 @@ def create_gui(theme, logs_in_gui=False):
                                 *_venc_args("medium", 20),
                                 "-c:a", "aac", "-b:a", "192k",
                                 "-movflags", "+faststart", out]
-                        _rc = _sp.run(_cmd, capture_output=True, text=True)
+                        _rc = _ffmpeg_run(_cmd)
                         if _rc.returncode != 0:
                             gr.Warning("Filter preview failed: " + _rc.stderr[-200:])
                             return None
@@ -2562,12 +2604,11 @@ def create_gui(theme, logs_in_gui=False):
                             _fin = "/tmp/pl_preview_cap_out.mp4"
                             if os.path.exists(_fin):
                                 os.remove(_fin)
-                            _rc2 = _sp.run(
+                            _rc2 = _ffmpeg_run(
                                 ["ffmpeg", "-y", "-i", out, "-vf", f"ass={_cap}",
                                  *_venc_args("medium", 20),
                                  "-c:a", "aac", "-b:a", "192k",
-                                 "-movflags", "+faststart", _fin],
-                                capture_output=True, text=True)
+                                 "-movflags", "+faststart", _fin])
                             if _rc2.returncode == 0:
                                 out = _fin
                             else:
@@ -3687,9 +3728,9 @@ def create_gui(theme, logs_in_gui=False):
                 work = "/tmp/videdit_work.mp4"
                 if os.path.exists(work):
                     os.remove(work)
-                p = _sp.run(["ffmpeg", "-y", "-i", src, *_venc_args("fast", 18),
-                             "-c:a", "aac",
-                             work], capture_output=True, text=True)
+                p = _ffmpeg_run(["ffmpeg", "-y", "-i", src, *_venc_args("fast", 18),
+                                 "-c:a", "aac",
+                                 work])
                 if p.returncode != 0:
                     return None
 
@@ -3725,7 +3766,7 @@ def create_gui(theme, logs_in_gui=False):
                             *_venc_args("medium", 20),
                             "-c:a", "aac", "-b:a", "192k",
                             "-movflags", "+faststart", _tmp]
-                    _r = _sp.run(_cmd, capture_output=True, text=True)
+                    _r = _ffmpeg_run(_cmd)
                     if _r.returncode == 0:
                         os.replace(_tmp, work)
 
@@ -3768,7 +3809,7 @@ def create_gui(theme, logs_in_gui=False):
                             *_venc_args("medium", 20),
                             "-c:a", "aac", "-b:a", "192k",
                             "-movflags", "+faststart", _tmp]
-                    _r = _sp.run(_cmd, capture_output=True, text=True)
+                    _r = _ffmpeg_run(_cmd)
                     if _r.returncode == 0:
                         os.replace(_tmp, work)
                     else:
@@ -3798,7 +3839,7 @@ def create_gui(theme, logs_in_gui=False):
                             "-map", "0:v", "-map", "[outa]",
                             "-c:v", "copy", "-c:a", "aac", "-b:a", "192k",
                             "-movflags", "+faststart", _tmp]
-                    _r = _sp.run(_cmd, capture_output=True, text=True)
+                    _r = _ffmpeg_run(_cmd)
                     if _r.returncode == 0:
                         os.replace(_tmp, work)
 
