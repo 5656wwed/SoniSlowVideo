@@ -314,18 +314,30 @@ directories = [
 
 class TTS_Info:
     def __init__(self, piper_enabled, xtts_enabled):
-        self.list_edge = edge_tts_voices_list()  # US English only (filtered inside)
+        # Build each engine's voice list INDEPENDENTLY so one failing (e.g. a
+        # cloud call to Edge/Fish) can never wipe out the others (Kokoro/Pocket).
+        self.list_edge = self._safe(lambda: edge_tts_voices_list(), "edge")
         self.list_bark = []  # hidden
         self.list_vits = []  # hidden
         self.list_openai_tts = []  # hidden
-        self.list_kokoro = list(KOKORO_VOICES_LIST.keys())
-        self.list_pocket_tts = sorted(
-            k for k in POCKET_TTS_VOICES_LIST.keys() if k.startswith("en-")
-        )
-        self.list_fish = sorted(f"{t} FishAudio" for _, t in fish_audio_voices_list())
+        self.list_kokoro = self._safe(
+            lambda: list(KOKORO_VOICES_LIST.keys()), "kokoro")
+        self.list_pocket_tts = self._safe(
+            lambda: sorted(k for k in POCKET_TTS_VOICES_LIST.keys()
+                           if k.startswith("en-")), "pocket")
+        self.list_fish = self._safe(
+            lambda: sorted(f"{t} FishAudio" for _, t in fish_audio_voices_list()),
+            "fish")
         self.piper_enabled = False
         self.list_vits_onnx = []  # hidden
         self.xtts_enabled = xtts_enabled
+
+    def _safe(self, fn, label):
+        try:
+            return fn()
+        except Exception as e:
+            print(f"[VOICES] {label} list failed: {e}")
+            return []
 
     def tts_list(self):
         self.list_coqui_xtts = (

@@ -621,8 +621,11 @@ def _get_voice_list_cached():
 @app.get("/api/voices")
 def voices():
     try:
-        return {"voices": _filter_voices(_get_voice_list_cached())}
+        lst = _filter_voices(_get_voice_list_cached())
+        print(f"[VOICES] returning {len(lst)} voices")
+        return {"voices": lst}
     except Exception as e:
+        print(f"[VOICES] ERROR: {e}")
         return {"voices": [], "error": str(e)[:300]}
 
 @app.post("/api/favorites")
