@@ -200,10 +200,35 @@ def _run_job(job_id):
         st["message"] = "Done"
         st["output"] = files
         st["files"] = files
+        _copy_to_drive(files)
     except Exception as e:
         st["status"] = "error"
         st["message"] = str(e)[:500]
         st["traceback"] = traceback.format_exc()[-2000:]
+
+
+def _copy_to_drive(files):
+    """Copy finished outputs to Google Drive (if mounted) so the user can
+    download them fast instead of through the slow Cloudflare tunnel.
+    Drive mount (Colab) lives at /content/drive; on the VPS this path won't
+    exist, so it silently no-ops."""
+    try:
+        drive_dir = Path("/content/drive/MyDrive/SoniSlowVideo_outputs")
+        if not drive_dir.exists():
+            return
+        drive_dir.mkdir(parents=True, exist_ok=True)
+        for f in files:
+            src = OUTPUTS / f
+            if not src.is_file():
+                continue
+            dst = drive_dir / f
+            try:
+                shutil.copy2(src, dst)
+                print(f"[DRIVE] copied {f} -> {dst}")
+            except Exception as e:
+                print(f"[DRIVE] copy failed {f}: {e}")
+    except Exception:
+        pass
 
 def _worker_loop():
     global _job_worker
