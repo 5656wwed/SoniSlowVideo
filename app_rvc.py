@@ -4,6 +4,29 @@ import re as _re
 import subprocess as _subprocess
 import os as _os
 
+# ---- NVENC: use the T4 GPU's hardware H.264 encoder when available, else CPU.
+# Detected once at first use. NEVER breaks: falls back to libx264 if NVENC
+# isn't present (e.g. the ARM VPS, or stock Colab ffmpeg without nvenc).
+_NVENC_OK = None
+def _venc_args(preset="medium", crf=20):
+    global _NVENC_OK
+    if _NVENC_OK is None:
+        try:
+            out = _subprocess.run(
+                ["ffmpeg", "-hide_banner", "-encoders"],
+                capture_output=True, text=True, timeout=30,
+            ).stdout
+            _NVENC_OK = "h264_nvenc" in out
+        except Exception:
+            _NVENC_OK = False
+    if _NVENC_OK:
+        pmap = {"ultrafast": "p1", "superfast": "p2", "veryfast": "p3",
+                "faster": "p4", "fast": "p4", "medium": "p5",
+                "slow": "p6", "slower": "p6", "veryslow": "p7"}
+        return ["-c:v", "h264_nvenc", "-preset", pmap.get(preset, "p5"),
+                "-cq", str(int(crf))]
+    return ["-c:v", "libx264", "-preset", preset, "-crf", str(int(crf))]
+
 
 def _retime_captions_to_audio(srt_path, audio_dir="audio"):
     """Re-time caption cues so each shows exactly when the narration speaks it.
@@ -858,7 +881,7 @@ class SoniTranslate(SoniTrCache):
                         "ffmpeg", "-y", "-i", base_video_file,
                         "-filter_complex", ";".join(_fc),
                         "-map", "[ov]", "-map", "[oa]",
-                        "-c:v", "libx264", "-preset", "medium", "-crf", "20",
+                        *_venc_args("medium", 20),
                         "-c:a", "aac", "-b:a", "192k",
                         "-movflags", "+faststart", _cm_out,
                     ]
@@ -946,7 +969,7 @@ class SoniTranslate(SoniTrCache):
                         _cmd = [
                             "ffmpeg", "-y", "-i", base_video_file,
                             "-vf", ",".join(_vf),
-                            "-c:v", "libx264", "-preset", "medium", "-crf", "20",
+                            *_venc_args("medium", 20),
                             "-c:a", "aac", "-b:a", "192k",
                             "-movflags", "+faststart", _tmp,
                         ]
@@ -1686,7 +1709,7 @@ class SoniTranslate(SoniTrCache):
                         "-i", mix_audio_file,
                         "-filter:v", vf,
                         "-map", "0:v:0", "-map", "1:a:0",
-                        "-c:v", "libx264", "-preset", "ultrafast",
+                        *_venc_args("ultrafast", 20),
                         "-crf", "23", "-threads", "0",
                         "-c:a", "aac", "-b:a", "192k",
                         "-shortest",
@@ -1727,7 +1750,7 @@ class SoniTranslate(SoniTrCache):
                         "ffmpeg", "-y", "-i", video_output_file,
                         "-vf", f"setpts=PTS/{_spd:.4f}",
                         "-af", f"atempo={_spd:.4f}",
-                        "-c:v", "libx264", "-preset", "fast", "-crf", "20",
+                        *_venc_args("fast", 20),
                         "-c:a", "aac", "-b:a", "192k",
                         "-movflags", "+faststart", _sp_out,
                     ], capture_output=True, text=True)
@@ -2447,7 +2470,7 @@ def create_gui(theme, logs_in_gui=False):
                     _cm_out = base + ".cm.mp4"
                     _cmd = ["ffmpeg", "-y", "-i", base, "-filter_complex",
                             ";".join(_fc), "-map", "[ov]", "-map", "[oa]",
-                            "-c:v", "libx264", "-preset", "medium", "-crf", "20",
+                            *_venc_args("medium", 20),
                             "-c:a", "aac", "-b:a", "192k",
                             "-movflags", "+faststart", _cm_out]
                     _rc = _sp.run(_cmd, capture_output=True, text=True)
@@ -2497,7 +2520,7 @@ def create_gui(theme, logs_in_gui=False):
                         _vf.append(f"lut3d=file='{_lutp}'")
                     if _vf:
                         _cmd = ["ffmpeg", "-y", "-i", base, "-vf", ",".join(_vf),
-                                "-c:v", "libx264", "-preset", "medium", "-crf", "20",
+                                *_venc_args("medium", 20),
                                 "-c:a", "aac", "-b:a", "192k",
                                 "-movflags", "+faststart", out]
                         _rc = _sp.run(_cmd, capture_output=True, text=True)
@@ -2541,7 +2564,7 @@ def create_gui(theme, logs_in_gui=False):
                                 os.remove(_fin)
                             _rc2 = _sp.run(
                                 ["ffmpeg", "-y", "-i", out, "-vf", f"ass={_cap}",
-                                 "-c:v", "libx264", "-preset", "medium", "-crf", "20",
+                                 *_venc_args("medium", 20),
                                  "-c:a", "aac", "-b:a", "192k",
                                  "-movflags", "+faststart", _fin],
                                 capture_output=True, text=True)
@@ -3664,8 +3687,8 @@ def create_gui(theme, logs_in_gui=False):
                 work = "/tmp/videdit_work.mp4"
                 if os.path.exists(work):
                     os.remove(work)
-                p = _sp.run(["ffmpeg", "-y", "-i", src, "-c:v", "libx264",
-                             "-preset", "fast", "-crf", "18", "-c:a", "aac",
+                p = _sp.run(["ffmpeg", "-y", "-i", src, *_venc_args("fast", 18),
+                             "-c:a", "aac",
                              work], capture_output=True, text=True)
                 if p.returncode != 0:
                     return None
@@ -3699,7 +3722,7 @@ def create_gui(theme, logs_in_gui=False):
                     _tmp = work + ".cm.mp4"
                     _cmd = ["ffmpeg", "-y", "-i", work, "-filter_complex",
                             ";".join(_fc), "-map", "[ov]", "-map", "[oa]",
-                            "-c:v", "libx264", "-preset", "medium", "-crf", "20",
+                            *_venc_args("medium", 20),
                             "-c:a", "aac", "-b:a", "192k",
                             "-movflags", "+faststart", _tmp]
                     _r = _sp.run(_cmd, capture_output=True, text=True)
@@ -3742,7 +3765,7 @@ def create_gui(theme, logs_in_gui=False):
                 if vf:
                     _tmp = work + ".vf.mp4"
                     _cmd = ["ffmpeg", "-y", "-i", work, "-vf", ",".join(vf),
-                            "-c:v", "libx264", "-preset", "medium", "-crf", "20",
+                            *_venc_args("medium", 20),
                             "-c:a", "aac", "-b:a", "192k",
                             "-movflags", "+faststart", _tmp]
                     _r = _sp.run(_cmd, capture_output=True, text=True)
