@@ -34,6 +34,10 @@ def _ffmpeg_run(cmd):
     pixel format, etc.) never silently breaks a feature like cut/mirror."""
     r = _subprocess.run(cmd, capture_output=True, text=True)
     if r.returncode != 0 and _NVENC_OK and "h264_nvenc" in cmd:
+        # Log the GPU failure so we can debug WHY nvenc failed (odd dims, format,
+        # driver), then retry on CPU so the feature still works.
+        print(f"[NVENC] GPU encode FAILED ({r.returncode}); falling back to CPU. "
+              f"stderr: {r.stderr.strip()[-400:]}")
         repl = []
         i = 0
         n = len(cmd)
